@@ -1,0 +1,148 @@
+# Gate Report Schema — Output of `/run-gates`
+#
+# Produced by: `core/commands/run-gates`.
+# Consumed by: `core/commands/review-feature`, `core/commands/create-mr`,
+#              `core/commands/pipeline-feedback`.
+#
+# Written to: `.pipeline/runs/<ticket_id>/gate_report.json`.
+#
+# Dart-side parsing produces `contracts/analyzer.dart::GateReport`.
+
+contract_version: "1.0.0"
+contract_status: draft
+
+# ─── Top-level required fields ────────────────────────────────────────────────
+required:
+  - gate
+  - timestamp
+  - passed
+  - results
+  - summary
+
+# ─── Field-by-field schema ────────────────────────────────────────────────────
+
+gate:
+  type: string
+  description: Gate label (e.g. `domain`, `infrastructure`, `presentation`,
+    `bugfix`, `fidelity`). Matches the folder name under `alea/gates/`.
+
+timestamp:
+  type: ISO8601
+  description: When the gate finished running.
+
+passed:
+  type: bool
+  description: True iff every entry in `results` has `passed: true` AND every
+    metric in `metrics` (if present) meets its threshold from `.alea.yaml`.
+
+results:
+  type: list<AnalyzerResult>
+  description: One entry per analyzer that ran in this gate. Order is the order
+    analyzers were registered in the gate's `analyzersFor(ctx)` list.
+
+AnalyzerResult:
+  type: object
+  required: [analyzer, passed, issues]
+  fields:
+    analyzer:
+      type: snake_case_string
+      description: Analyzer name (matches folder under `alea/analyzers/`).
+    passed:
+      type: bool
+      description: True iff the analyzer found no `blocker` or `critical` issues.
+    issues:
+      type: list<AnalysisIssue>
+
+AnalysisIssue:
+  type: object
+  required: [file, rule, message, severity]
+  fields:
+    file:
+      type: relative_path
+      description: Path to the offending file, relative to the consumer project root.
+    line:
+      type: int | null
+      default: null
+    rule:
+      type: string
+      description: Human-readable rule label (e.g. "Layer integrity: domain may
+        not import infrastructure").
+    rule_id:
+      type: snake_case_string | null
+      default: null
+      description: Stable identifier for this rule (e.g. `layer_integrity/domain-from-infra`).
+        Used by consumers to suppress specific rules via inline comments.
+    message:
+      type: string
+      description: Specific message for this occurrence, including the offending
+        token or import URI.
+    suggested_fix:
+      type: string | null
+      default: null
+      description: Adapter-suggested fix in plain language. May be displayed by
+        IDE integrations.
+    severity:
+      type: string
+      enum: [minor, major, critical, blocker]
+
+metrics:
+  type: map<metric_name, MetricEntry>
+  default: {}
+  description: Non-issue metrics captured by the gate (coverage %, fidelity
+    score, lines-of-code generated, etc.). Each metric may have a threshold
+    pulled from `.alea.yaml`; threshold violations contribute to `passed: false`
+    independently of analyzer issues.
+
+MetricEntry:
+  type: object
+  required: [value]
+  fields:
+    value:
+      type: number
+    threshold:
+      type: number | null
+      default: null
+    threshold_type:
+      type: string | null
+      enum: [min, max]
+      default: null
+      description: For `min`, the value must be ≥ threshold to pass; for `max`,
+        ≤ threshold.
+    passed:
+      type: bool | null
+      default: null
+      description: True iff the threshold check passed. Null when no threshold
+        is configured (metric is informational only).
+    unit:
+      type: string | null
+      default: null
+      description: e.g. `pct`, `count`, `score`.
+
+summary:
+  type: object
+  required: [total_issues, blockers, criticals, majors, minors]
+  fields:
+    total_issues:
+      type: int >= 0
+    blockers:
+      type: int >= 0
+    criticals:
+      type: int >= 0
+    majors:
+      type: int >= 0
+    minors:
+      type: int >= 0
+    metrics_failing:
+      type: int >= 0
+      default: 0
+      description: Count of entries in `metrics` whose `passed` is false.
+
+# ─── How `passed` is computed ────────────────────────────────────────────────
+#
+#   gate.passed = every(result.passed) AND every(metric.passed != false)
+#
+#   result.passed = no issue with severity in {blocker, critical}
+#
+#   metric.passed = (threshold == null)     → null  (does not affect gate.passed)
+#                   threshold_type == min   → value >= threshold
+#                   threshold_type == max   → value <= threshold

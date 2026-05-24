@@ -1,0 +1,12 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  # Test fixtures are synthetic Dart files used as input to the analyzers under
+  # test. They intentionally import packages and relative paths that don't exist
+  # in this project — that's the point. They should NOT be analyzed.
+  exclude:
+    - "test/**/fixtures/**"
+    - ".dart_tool/**"
+  errors:
+    # Allow `print` in CLI bins and dev tools.
+    avoid_print: ignore

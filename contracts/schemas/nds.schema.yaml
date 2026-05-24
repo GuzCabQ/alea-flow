@@ -1,0 +1,150 @@
+# Normalized Design Spec (NDS) — Stable Contract
+#
+# Produced by: every adapter under alea/adapters/design_source/<X>/
+# Consumed by: alea/core/commands/design-feature (merged into spec.json),
+#              alea/adapters/code_gen/<X>/ (drives Dart generation),
+#              alea/lib/src/analyzers/visual_fidelity/ (compares generated code vs NDS expectations).
+#
+# This schema is THE stability surface for design-source adapters. Adding a new design source
+# (Penpot, Sketch, Storybook, ...) requires emitting conforming NDS — nothing else. Changing
+# this schema is a breaking change for every design-source adapter, every code-gen adapter,
+# and the visual-fidelity analyzer simultaneously.
+#
+# Source: derived from flutter-ui/references/nds-schema.yaml + the mandatory extraction rules
+# in flutter-ui/SKILL.md lines 158-216. Promoted to a package contract.
+
+contract_version: "1.0.0"
+contract_status: draft     # promote to "stable" when first migration smoke test (step 11) passes
+
+# ─── Top-level document shape ─────────────────────────────────────────────────
+document:
+  source:
+    adapter: snake_case_string                   # adapter name that produced this NDS — opaque string;
+                                                 # NDS consumers MUST NOT branch on this value.
+                                                 # Examples: figma, image, markup, sketch, adobe_xd, penpot.
+    uri: string                                  # original source identifier (URL, path, or hash)
+    extracted_at: string                         # ISO 8601 timestamp
+    contract_version: string                     # echoes the version above
+  elements: list<Element>                        # flattened tree; parent relationships via parent_id
+
+# ─── Element schema ───────────────────────────────────────────────────────────
+Element:
+  id: string                                     # snake_case, unique within document, descriptive
+  parent_id: string | null
+  type:
+    enum:
+      - container
+      - text
+      - button
+      - image
+      - list
+      - icon
+      - icon_text_compound                       # an image+text unit that is one semantic widget
+  widget_hint: string | null                     # compound widget recognition (e.g. "InformationBanner")
+                                                 # — see widget-scoring-matrix in adapter _common/
+  layout:
+    enum: [column, row, stack, none]
+    nullable: true
+  scroll: bool
+  interactive: bool
+
+  # ─── Visual: background ─────────────────────────────────────────────────────
+  background:
+    type: { enum: [solid, gradient, none] }
+    value: string | null
+                                                 # solid:    "#RRGGBB"
+                                                 # gradient: "#RRGGBB,#RRGGBB[,...]" — all stops
+    opacity: float | null                        # 0.0 - 1.0; applied via .withValues(alpha:)
+    direction: int | null                        # gradient angle in degrees, 0-360 (normalized)
+
+  # ─── Visual: border ─────────────────────────────────────────────────────────
+  border:
+    radius: int | null                           # uniform radius in dp
+    radius_tl: int | null                        # per-corner overrides (mutually exclusive with radius)
+    radius_tr: int | null
+    radius_bl: int | null
+    radius_br: int | null
+    width: int | null
+    color: string | null                         # "#RRGGBB"
+
+  # ─── Sizing ─────────────────────────────────────────────────────────────────
+  # Encoded as: "fill" | "hug" | "fixed:N" (N is dp). null = unspecified.
+  width: string | null
+  height: string | null
+
+  # ─── Text-specific fields ───────────────────────────────────────────────────
+  content: { enum: [static, dynamic], nullable: true }
+  static_value: string | null
+  rich_text: bool                                # true → use RichText/TextSpan
+  style:
+    color: string | null                         # "#RRGGBB"
+    size: int | null                             # dp
+    weight: { enum: [normal, w600, bold], nullable: true }
+    text_align: { enum: [left, center, right], nullable: true }
+                                                 # emit only when non-left
+    line_height: float | null                    # unitless multiplier (Flutter's TextStyle.height)
+    letter_spacing: float | null                 # dp
+
+  # ─── Image-specific fields ──────────────────────────────────────────────────
+  asset_path: string | null
+  asset_type:
+    enum: [image, svg, gif, lottie]
+    nullable: true
+                                                 # .png/.jpg/.webp → image
+                                                 # .svg → svg
+                                                 # .gif → gif
+                                                 # .json (Lottie) → lottie
+  box_fit:
+    enum: [cover, contain, fill]
+    nullable: true
+                                                 # icon/illustration/logo → contain
+                                                 # full-bleed background  → cover
+                                                 # absent and unclear     → contain (default)
+
+  # ─── Button-specific fields ─────────────────────────────────────────────────
+  # NEVER emit children:[] for buttons. Always emit label (possibly "") and icon (possibly null).
+  label: string | null                           # required for type=button (use "" only if truly empty)
+  icon: string | null                            # asset path; null if no icon
+  icon_position: { enum: [leading, trailing], nullable: true }
+                                                 # required when icon is non-null
+
+  # ─── List-specific fields (state-variant icons) ─────────────────────────────
+  # For lists where each item shows a different icon per state (done/active/pending).
+  icon_done: string | null
+  icon_active: string | null
+  icon_pending: string | null
+
+  # ─── Interactions ───────────────────────────────────────────────────────────
+  actions: list<Action>
+
+Action:
+  trigger: { enum: [tap, long_press, swipe] }
+  target: string | null                          # route name, callback id, or null for noop
+
+# ─── Conformance rules every design-source adapter MUST follow ───────────────
+#
+# 1. Every element has a unique snake_case id.
+# 2. Hex values in background.value, border.color, style.color are #RRGGBB (6 chars, no alpha).
+#    Alpha goes in background.opacity (0.0-1.0).
+# 3. Buttons NEVER emit children:[]. They emit (label, icon, icon_position).
+# 4. Images always emit asset_type and box_fit. Default box_fit when unclear: contain.
+# 5. Gradients always emit type=gradient with ALL stops in value (comma-separated). Never
+#    reduce a gradient to a single dominant color.
+# 6. text_align is emitted only when non-left.
+# 7. Lists with state-variant icons emit icon_done, icon_active, icon_pending (each may be
+#    the same path; dimming is the code-gen adapter's concern).
+# 8. widget_hint is set only when confidence is high (≥3 pattern signals match). A wrong
+#    hint is worse than no hint; when in doubt, leave null.
+# 9. Repeating sibling items of the same type collapse into ONE element with type=list and
+#    content=dynamic.
+# 10. asset_path values are relative to the consumer project root (the path that
+#     code-gen will pass to Image.asset()/SvgPicture.asset()/Lottie.asset()).
+
+# ─── Open questions (resolve before contract_status: stable) ──────────────────
+#
+# - Should sizing be a structured object {mode: fill|hug|fixed, value: int} instead of a
+#   stringly-typed "fixed:N"? Trade-off: structured is cleaner; string is shorter and
+#   matches Figma's auto-layout vocabulary closely.
+# - Should we encode z-index / stacking order explicitly for type=stack containers?
+# - Should `style` move under a `text:` sub-object for clarity, or stay flat?
+# - Should `actions` support multi-step flows (e.g. tap → animate → navigate)?

@@ -1,0 +1,300 @@
+# Project Config Schema — Validates `.alea.yaml`
+#
+# Every consumer project's `.alea.yaml` MUST conform to this schema. ALEA validates
+# at the start of every `/pipeline` invocation; validation errors stop execution.
+#
+# The example at `alea/config/examples/my_app.yaml` is the reference instance.
+# Dart-side parsing produces `alea/lib/src/contracts/project_config.dart::ProjectConfig`.
+#
+# Format: informal declarative schema (same style as `nds.schema.yaml`). Fields are
+# described as `key: type [: constraints]`. Nullable fields are marked. Required
+# fields have no default; optional fields show their default.
+
+contract_version: "1.0.0"
+contract_status: draft
+
+# ─── Top-level required fields ────────────────────────────────────────────────
+required:
+  - config_version
+  - project
+  - architecture
+  - state_management
+  - routing
+  - theme
+  - testing
+  - coverage
+  - ticket_source
+  - design_source
+  - mr
+  - pipeline
+  - gates
+
+# ─── Field-by-field schema ────────────────────────────────────────────────────
+
+config_version:
+  type: semver_string
+  description: Version of this schema the config targets. ALEA refuses to run if the
+    major doesn't match the package's contract version.
+
+project:
+  type: object
+  required: [package_name, pubspec_path]
+  fields:
+    package_name:
+      type: string
+      pattern: "^[a-z][a-z0-9_]*$"
+      description: Dart package name (matches `name:` in pubspec.yaml). Used by
+        layer-integrity analyzer to construct import URIs.
+    pubspec_path:
+      type: relative_path
+      default: pubspec.yaml
+    display_name:
+      type: string | null
+      default: null
+
+architecture:
+  type: object
+  required: [layers]
+  fields:
+    layers:
+      type: map<layer_name, LayerSpec>
+      description: Layer names are free-form (commonly `domain`, `infrastructure`,
+        `presentation`); each maps to a [LayerSpec]. There must be at least one
+        layer. The layer name `domain` is conventionally the bottom; other names
+        may reference it via `may_import`.
+
+LayerSpec:
+  type: object
+  required: [paths]
+  fields:
+    paths:
+      type: list<relative_path>
+      description: One or more directories where this layer's source files live.
+        Must be under `lib/`.
+    may_import:
+      type: list<layer_name>
+      default: []
+      description: Other layers this layer is allowed to import from. Empty list
+        means the layer can only import standard library / external packages.
+    forbid_imports:
+      type: list<import_uri_prefix>
+      default: []
+      description: Import URI prefixes (e.g. `package:flutter/`,
+        `package:my_app/src/infrastructure/`) that files in this layer
+        must NOT import. Checked by `analyzers/layer-integrity/`.
+
+state_management:
+  type: object
+  required: [style]
+  fields:
+    style:
+      type: string
+      enum: [riverpod_manual, bloc, provider, getx, mobx, custom]
+      description: Selects which `adapters/code_gen/<style>/` adapter generates code.
+        Adapters not yet implemented in v1 (bloc, provider, getx, mobx) will fail
+        at run time with a clear error until their adapter folder is created.
+    rules:
+      type: map<string, any>
+      default: {}
+      description: Adapter-specific knobs. The shape is defined by each adapter's
+        README. For `riverpod_manual/`, see
+        `adapters/code_gen/riverpod_manual/README.md`.
+
+routing:
+  type: object
+  required: [package, router_path]
+  fields:
+    package:
+      type: string
+      enum: [go_router, auto_route, navigator_2, custom]
+    router_path:
+      type: relative_path
+      description: File where new routes are registered.
+
+theme:
+  type: object
+  required: [path]
+  fields:
+    path:
+      type: relative_path
+      description: File that defines the project's `ThemeData` and color tokens.
+        Consumed by `adapters/design_source/_common/` (theme extraction) and by
+        the state-mgmt analyzer.
+    brand_colors:
+      type: map<token_name, hex_color>
+      default: {}
+      description: Named brand colors. Token names are free-form
+        (e.g. `primary`, `tertiary`, `secondary`, `primary_light`). Used by
+        design-source adapters to short-circuit color distance matching when
+        a design color matches a brand color exactly.
+    typography:
+      type: map<token_name, string>
+      default: {}
+      description: Named font tokens (e.g. `ui_font: "DM Sans"`,
+        `code_font: "JetBrains Mono"`). Used by design-source adapters.
+
+testing:
+  type: object
+  required: [framework, fakes_path]
+  fields:
+    framework:
+      type: string
+      enum: [flutter_test, test, mockito_lite, custom]
+      default: flutter_test
+    fakes_path:
+      type: relative_path
+      default: test/fakes/
+    pattern:
+      type: string
+      enum: [aaa, given_when_then, custom]
+      default: aaa
+    override_target:
+      type: string
+      enum: [repository, notifier, service, custom]
+      default: repository
+      description: What widget tests override. The current the reference consumer convention is
+        `repository` — see `core/commands/testing.md`.
+    prefer_fakes_over_mocks:
+      type: bool
+      default: true
+    fake_class_pattern:
+      type: string
+      default: "Fake{Name}Repository"
+      description: Pattern for naming fake classes; `{Name}` is substituted with
+        the entity name.
+
+coverage:
+  type: object
+  required: [thresholds]
+  fields:
+    thresholds:
+      type: map<layer_name, int>
+      description: Minimum coverage percentage per layer. Layer names must match
+        keys in `architecture.layers`. Enforced by gates per layer.
+
+ticket_source:
+  type: object
+  required: [adapter]
+  fields:
+    adapter:
+      type: string
+      description: Name of a folder under `adapters/ticket_source/`. Must exist.
+    config:
+      type: map<string, any>
+      default: {}
+      description: Adapter-specific config. For `asana/`, includes `pii_sanitize: bool`.
+
+design_source:
+  type: object
+  required: [default, adapters]
+  fields:
+    default:
+      type: string
+      description: Name of a folder under `adapters/design_source/`. The adapter
+        used when a ticket has a design reference. Must exist and be `enabled: true`
+        in `adapters` below.
+    adapters:
+      type: map<adapter_name, DesignAdapterEntry>
+      description: Per-adapter configuration. Adapters with `enabled: false` are
+        skipped even if referenced as `default`.
+
+DesignAdapterEntry:
+  type: object
+  required: [enabled]
+  fields:
+    enabled:
+      type: bool
+    hallucination_threshold_pct:
+      type: int [0, 100]
+      default: 20
+      description: When >20% of recent runs are flagged as hallucinations by
+        `pipeline-feedback`, ALEA flips `enabled` to false (circuit breaker).
+    circuit_breaker_min_runs:
+      type: int >= 1
+      default: 5
+    mcp_server:
+      type: string | null
+      default: null
+      description: Name of the MCP server providing this design source. Adapter-specific.
+
+mr:
+  type: object
+  required: [policy, branch_pattern, pre_push]
+  fields:
+    policy:
+      type: string
+      enum: [single-commit-amend, single-commit-squash, multi-commit, custom]
+    branch_pattern:
+      type: string
+      description: Template with `{ticket_id}` and `{slug}` placeholders.
+    pre_push:
+      type: list<shell_command>
+      description: Commands run by `create-mr` before pushing. Failure on any
+        command aborts the push.
+
+pipeline:
+  type: object
+  required: [default_mode, modes_available]
+  fields:
+    default_mode:
+      type: string
+      enum: [guided, semi, auto]
+    modes_available:
+      type: list<string>
+      enum_items: [guided, semi, auto]
+    cost_warn_usd:
+      type: float >= 0
+      default: 3.00
+    cost_hard_stop_usd:
+      type: float >= 0
+      default: 5.00
+    unreliable_threshold:
+      type: object
+      fields:
+        runs_window:
+          type: int >= 1
+          default: 5
+        bad_runs_required:
+          type: int >= 1
+          default: 3
+        manual_corrections_per_run:
+          type: int >= 1
+          default: 5
+
+gates:
+  type: map<layer_name, list<gate_name>>
+  description: For each layer, which gates run when `/run-gates --gate <layer>`
+    is invoked. Gate names must match folders under `alea/gates/`.
+
+analyzers:
+  type: object
+  fields:
+    enabled:
+      type: list<analyzer_name>
+      default: []
+      description: Analyzer names that should run. Empty list = all registered
+        analyzers run. Names must match folders under `alea/analyzers/`.
+    severity_overrides:
+      type: map<analyzer_name, severity>
+      default: {}
+      description: Map of analyzer name → severity to coerce every issue to.
+        Used to demote `dry_detection` to `minor` for projects that tolerate
+        more duplication, for example.
+
+docs:
+  type: map<string, relative_path>
+  default: {}
+  description: Optional pointers to consumer documentation. Free-form keys.
+    Currently used for `testing_conventions` and `architecture_doc`.
+
+# ─── Open questions (resolve before contract_status: stable) ──────────────────
+#
+# - Should adapter selection be a list (`design_source.adapters: [figma, image]`)
+#   instead of a map keyed by enabled flag? Trade-off: list is shorter; map allows
+#   per-adapter options inline.
+# - Should `architecture.layers` enforce an ordering (top-of-stack first) for
+#   automatic `forbid_imports` derivation, or is the explicit list always preferred?
+# - Should `state_management.rules` be promoted to a structured per-style schema
+#   instead of `map<string, any>`?
+# - Should `analyzers.severity_overrides` allow null to disable an analyzer entirely
+#   rather than requiring it to be omitted from `enabled`?

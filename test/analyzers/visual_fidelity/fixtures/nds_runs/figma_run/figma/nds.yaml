@@ -1,0 +1,10 @@
+# Minimal NDS document for testing emoji severity escalation.
+# Used by `emoji_as_icon escalates to critical when NDS source is figma`.
+
+document:
+  source:
+    adapter: figma
+    uri: "https://figma.com/design/abc/Test?node-id=1:2"
+    extracted_at: "2026-05-17T00:00:00Z"
+    contract_version: "1.0.0"
+  elements: []

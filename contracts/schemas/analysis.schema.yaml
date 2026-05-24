@@ -1,0 +1,242 @@
+# Analysis Schema — Output of `/analyze-ticket`
+#
+# Produced by: `core/commands/analyze-ticket` (after the ticket-source adapter fetches the raw payload).
+# Consumed by: `core/commands/design-feature` (feature tickets), `core/commands/implement-bugfix`
+#              (bugfix tickets), `core/commands/validate-functional`, `core/commands/review-feature`.
+#
+# Written to: `.pipeline/runs/<ticket_id>/analysis.json`.
+
+contract_version: "1.0.0"
+contract_status: draft
+
+# ─── Top-level required fields ────────────────────────────────────────────────
+required:
+  - ticket_id
+  - type
+  - title
+  - description
+  - success_criteria
+  - created_at
+
+# ─── Field-by-field schema ────────────────────────────────────────────────────
+
+ticket_id:
+  type: string
+  pattern: "^[A-Z]+-[0-9]+$"
+  description: Stable ticket identifier (e.g. `DEV-1234`, `OPS-42`). Used as the
+    directory name under `.pipeline/runs/`.
+
+type:
+  type: string
+  enum: [feature, bugfix]
+  description: Determines which downstream phase runs. `feature` → design + 3
+    implement phases. `bugfix` → single implement-bugfix phase.
+
+title:
+  type: string
+  description: Human-readable summary. Used in MR title and QA handoff.
+
+description:
+  type: string
+  description: Full body of the ticket, PII-redacted. Markdown allowed.
+
+success_criteria:
+  type: list<string>
+  min_items: 1
+  description: Numbered or bulleted list of conditions that define "done". Each
+    is checked against the spec in `design-feature` and against the implementation
+    in `review-feature`.
+
+acceptance_tests:
+  type: list<string> | null
+  default: null
+  description: Specific test cases mentioned in the ticket (e.g. "given X, when Y,
+    then Z"). Used by `validate-functional`.
+
+attachments:
+  type: list<AttachmentRef>
+  default: []
+  description: |
+    Every external reference the ticket carries — design files, screenshots,
+    documents, related links. This is the SINGLE channel for design-source
+    references (Figma URLs, Sketch links, screenshots, HTML/JSX exports).
+    `/design-feature` walks this list, matches each entry against the design-source
+    adapters enabled in `.alea.yaml::design_source.adapters.*`, and routes to the
+    first match. There is intentionally no `figma_link` or any other source-specific
+    top-level field — adding a new design source (Penpot, Adobe XD, Storybook)
+    must NOT require changing this schema.
+
+AttachmentRef:
+  type: object
+  required: [kind, uri]
+  fields:
+    kind:
+      type: string
+      enum: [image, document, video, link, other]
+      description: Coarse-grained type. The adapter routing decision uses
+        `description` (below) as the primary hint, not `kind`.
+    uri:
+      type: string
+      description: URL or file path. Adapters interpret per their own conventions
+        (e.g. the figma adapter expects a `figma.com/(file|design|proto)/...` URL).
+    description:
+      type: string | null
+      default: null
+      description: |
+        Adapter routing hint. When an adapter name matches `description`
+        case-insensitively (e.g. `description: "figma"` → `figma/` adapter),
+        that adapter is selected for this attachment. Falls back to URL pattern
+        matching when `description` is null or unrecognized:
+          - host `figma.com`          → `figma`
+          - host `sketch.cloud`       → `sketch`
+          - extension `.fig`          → `figma`
+          - extension `.sketch`       → `sketch`
+          - extension `.xd`           → `adobe_xd`
+          - extension `.png/.jpg/...` → `image`
+          - extension `.html/.jsx`    → `markup`
+        Adapters whose match is not enabled in `.alea.yaml::design_source.adapters`
+        are skipped; the next attachment is tried.
+
+priority:
+  type: string | null
+  enum: [low, medium, high, critical]
+  default: null
+
+assignee:
+  type: string | null
+  default: null
+  description: Assignee identifier from the ticket system. Echoed in MR description.
+
+labels:
+  type: list<string>
+  default: []
+
+# ─── Extracted fields (computed by core after adapter fetch) ──────────────────
+#
+# The adapter returns raw fields. Core (`/analyze-ticket`) classifies type and
+# extracts the structured fields below from the ticket content + consumer project
+# state. These drive downstream phase behavior (--gate scoping, spec seeding).
+
+affected_layers:
+  type: list<layer_name>
+  default: []
+  description: Names of layers from `.alea.yaml::architecture.layers` that the
+    ticket touches. Inferred from description keywords + affected_files. Used by
+    `/run-gates` to scope analyzer execution.
+
+affected_files:
+  type: list<relative_path>
+  default: []
+  description: Files in the consumer project that the ticket likely touches.
+    Resolved by scanning `lib/features/` (or whatever the consumer's feature
+    paths are) for keyword matches and explicit mentions.
+
+# ─── Type-specific extracted fields ───────────────────────────────────────────
+#
+# Fields below are populated based on `type`. The field MUST be present (may be
+# null) when its `required_when` condition holds.
+
+bug_description:
+  type: string | null
+  default: null
+  required_when: "type == bugfix"
+  description: One-paragraph description of what is broken (vs the full
+    `description` which echoes the ticket body verbatim).
+
+root_cause_hypothesis:
+  type: string | null
+  default: null
+  required_when: "type == bugfix"
+  description: Best inference of WHY the bug occurs and which code path likely
+    causes it. Includes a confidence note when the cause is uncertain (e.g.
+    "uncertain — could be either A or B").
+
+feature_description:
+  type: string | null
+  default: null
+  required_when: "type == feature"
+  description: One-paragraph description of what must be built.
+
+new_components:
+  type: NewComponents | null
+  default: null
+  required_when: "type == feature"
+  description: Approximate breakdown of components to be created. Seeds
+    `/design-feature`'s spec generation but is not authoritative — the spec may
+    refine these.
+
+NewComponents:
+  type: object
+  fields:
+    entities:
+      type: list<pascal_case_string>
+      default: []
+    repository_contracts:
+      type: list<pascal_case_string>
+      default: []
+    dtos:
+      type: list<pascal_case_string>
+      default: []
+    screens:
+      type: list<pascal_case_string>
+      default: []
+    providers:
+      type: list<pascal_case_string>
+      default: []
+
+# ─── Audit / provenance ───────────────────────────────────────────────────────
+
+pii_sanitized:
+  type: bool
+  default: true
+  description: Always true after successful core processing. The detailed audit
+    trail is in `pii_redactions[]`.
+
+ticket_source:
+  type: object
+  description: Provenance of this analysis.
+  required: [adapter, fetched_at]
+  fields:
+    adapter:
+      type: string
+      description: Adapter name (e.g. `asana`, `linear`, `file`).
+    fetched_at:
+      type: ISO8601
+    raw_url:
+      type: string | null
+      default: null
+      description: Direct link back to the ticket in its source system.
+
+pii_redactions:
+  type: list<PiiRedaction>
+  default: []
+  description: Audit trail of PII fields scrubbed from the original payload.
+    Helps reviewers verify nothing sensitive leaked into `.pipeline/runs/`.
+
+PiiRedaction:
+  type: object
+  fields:
+    pattern:
+      type: string
+      enum: [rfc, curp, clabe, card, phone, email, custom]
+    field:
+      type: string
+      description: Logical location of the redaction (e.g. `description`,
+        `attachments[2].description`).
+    count:
+      type: int >= 1
+
+created_at:
+  type: ISO8601
+  description: When `analyze-ticket` produced this file.
+
+# ─── Validation rules beyond field types ──────────────────────────────────────
+#
+# 1. When `type: bugfix`, design-source attachments SHOULD be empty (warning, not
+#    error) — bugfixes typically don't carry design references.
+# 2. When `type: feature` and `attachments[]` contains any entry that routes to an
+#    enabled design-source adapter (per `.alea.yaml::design_source.adapters.*`),
+#    `/design-feature` MUST attempt extraction. Routing follows the description
+#    hint first, then URL pattern fallback (see `AttachmentRef.description`).
+# 3. `success_criteria` items are stable across phases — `review-feature` maps each
+#    one to the implementation. Do not reword them after creation.

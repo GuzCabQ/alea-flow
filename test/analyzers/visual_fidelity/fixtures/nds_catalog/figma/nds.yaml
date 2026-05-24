@@ -1,0 +1,178 @@
+document:
+  source:
+    adapter: figma
+    uri: https://figma.com/design/fixture
+    extracted_at: 2026-05-23T00:00:00Z
+    contract_version: "1.0.0"
+  elements:
+    - id: cta_button
+      parent_id: null
+      type: button
+      widget_hint: null
+      layout: row
+      scroll: false
+      interactive: true
+      background:
+        type: solid
+        value: "#DA1884"     # matches palette.brand60 exactly
+        opacity: 1.0
+        direction: null
+      border:
+        radius: 8
+        radius_tl: null
+        radius_tr: null
+        radius_bl: null
+        radius_br: null
+        width: null
+        color: null
+      width: hug
+      height: "fixed:48"
+      content: null
+      static_value: null
+      rich_text: false
+      style:
+        color: null
+        size: null
+        weight: null
+        text_align: null
+        line_height: null
+        letter_spacing: null
+      asset_path: null
+      asset_type: null
+      box_fit: null
+      label: "Continuar"
+      icon: null
+      icon_position: null
+      icon_done: null
+      icon_active: null
+      icon_pending: null
+      actions: []
+
+    - id: title_text
+      parent_id: null
+      type: text
+      widget_hint: null
+      layout: null
+      scroll: false
+      interactive: false
+      background:
+        type: none
+        value: null
+        opacity: null
+        direction: null
+      border:
+        radius: null
+        radius_tl: null
+        radius_tr: null
+        radius_bl: null
+        radius_br: null
+        width: null
+        color: null
+      width: hug
+      height: hug
+      content: static
+      static_value: "Bienvenido"
+      rich_text: false
+      style:
+        color: "#1A1A1A"     # matches palette.text exactly
+        size: 16             # matches typography.body2 (size=16, weight=w600)
+        weight: w600
+        text_align: null
+        line_height: null
+        letter_spacing: null
+      asset_path: null
+      asset_type: null
+      box_fit: null
+      label: null
+      icon: null
+      icon_position: null
+      icon_done: null
+      icon_active: null
+      icon_pending: null
+      actions: []
+
+    - id: rogue_background
+      parent_id: null
+      type: container
+      widget_hint: null
+      layout: column
+      scroll: false
+      interactive: false
+      background:
+        type: solid
+        value: "#445566"     # nowhere near any catalog token → no_match
+        opacity: 1.0
+        direction: null
+      border:
+        radius: null
+        radius_tl: null
+        radius_tr: null
+        radius_bl: null
+        radius_br: null
+        width: null
+        color: null
+      width: fill
+      height: hug
+      content: null
+      static_value: null
+      rich_text: false
+      style:
+        color: null
+        size: null
+        weight: null
+        text_align: null
+        line_height: null
+        letter_spacing: null
+      asset_path: null
+      asset_type: null
+      box_fit: null
+      label: null
+      icon: null
+      icon_position: null
+      icon_done: null
+      icon_active: null
+      icon_pending: null
+      actions: []
+
+    - id: rogue_typography
+      parent_id: null
+      type: text
+      widget_hint: null
+      layout: null
+      scroll: false
+      interactive: false
+      background:
+        type: none
+        value: null
+        opacity: null
+        direction: null
+      border:
+        radius: null
+        radius_tl: null
+        radius_tr: null
+        radius_bl: null
+        radius_br: null
+        width: null
+        color: null
+      width: hug
+      height: hug
+      content: static
+      static_value: "Tag"
+      rich_text: false
+      style:
+        color: null
+        size: 11             # no catalog token has size 11
+        weight: w600
+        text_align: null
+        line_height: null
+        letter_spacing: null
+      asset_path: null
+      asset_type: null
+      box_fit: null
+      label: null
+      icon: null
+      icon_position: null
+      icon_done: null
+      icon_active: null
+      icon_pending: null
+      actions: []

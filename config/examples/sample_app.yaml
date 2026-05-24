@@ -1,0 +1,171 @@
+# ALEA consumer configuration — sample_app (reference example).
+#
+# This file is a reference example of the consumer-specific values that ALEA expects
+# in the existing pipeline at the repo root. Copy this file to your project root
+# as `.alea.yaml` to consume ALEA.
+#
+# Schema:    ../../contracts/schemas/project-config.schema.yaml (TBD)
+# Validates: every value here must conform to the schema; ALEA refuses to run
+#            on a malformed config.
+
+config_version: "1.0.0"
+
+# ─── Project identity ─────────────────────────────────────────────────────────
+project:
+  package_name: sample_app
+  pubspec_path: pubspec.yaml
+  display_name: Sample App
+
+# ─── Clean Architecture: layer paths and import rules ─────────────────────────
+# Consumed by: analyzers/layer-integrity/, all code-gen adapters, design-feature.
+architecture:
+  layers:
+    domain:
+      paths:
+        - lib/src/domain/
+      may_import: []                            # pure Dart only
+      forbid_imports:
+        - "package:flutter/"
+        - "package:sample_app/src/infrastructure/"
+        - "package:sample_app/src/presentation/"
+    infrastructure:
+      paths:
+        - lib/src/infrastructure/
+      may_import:
+        - domain
+      forbid_imports:
+        - "package:sample_app/src/presentation/"
+    presentation:
+      paths:
+        - lib/src/presentation/
+      may_import:
+        - domain
+      forbid_imports:
+        - "package:sample_app/src/infrastructure/"
+
+# ─── State management ─────────────────────────────────────────────────────────
+# Selects: adapters/code_gen/riverpod_manual/
+state_management:
+  style: riverpod_manual
+  rules:
+    notifier_base: Notifier                     # never Notifier<sealed>
+    async_notifier_base: AsyncNotifier
+    notifier_provider: NotifierProvider
+    async_provider: AsyncNotifierProvider       # for HTTP-loading notifiers
+    forbid_codegen: true                        # no @riverpod, no build_runner, no .g.dart
+    forbid_sealed_state: true                   # plain Dart classes with copyWith
+    require_ref_mounted_after_await: true
+    state_class_pattern: "{name}State"          # ExampleNotifier → ExampleState
+    enum_pattern: "{name}Status"                # ExampleStatus { initial, loading, loaded, error }
+
+# ─── Routing ──────────────────────────────────────────────────────────────────
+routing:
+  package: go_router
+  router_path: lib/app/router/app_router.dart
+
+# ─── Theme ────────────────────────────────────────────────────────────────────
+theme:
+  path: lib/app/theme/app_theme.dart
+  brand_colors:
+    primary: "#0066CC"                          # brand-primary
+    tertiary: "#004C99"                         # brand-deep
+    secondary: "#E0F5F5"                        # turquesa
+    primary_light: "#FCEDF6"
+  typography:
+    ui_font: "DM Sans"
+    code_font: "JetBrains Mono"                 # SKUs, alphanumeric codes
+
+# ─── Testing ──────────────────────────────────────────────────────────────────
+# Consumed by: analyzers/testing/, all code-gen adapters (test scaffolding).
+testing:
+  framework: flutter_test
+  fakes_path: test/fakes/
+  pattern: aaa                                  # Arrange / Act / Assert
+  override_target: repository                   # widget tests override repos, NEVER notifiers
+  prefer_fakes_over_mocks: true                 # no mocktail unless last resort
+  fake_class_pattern: "Fake{Name}Repository"
+
+# ─── Coverage thresholds (per layer) ──────────────────────────────────────────
+# Consumed by: gates/<layer>/, review-feature.
+coverage:
+  thresholds:
+    domain: 95
+    infrastructure: 80
+    presentation: 70
+
+# ─── Ticket source ────────────────────────────────────────────────────────────
+# Selects: adapters/ticket_source/asana/
+ticket_source:
+  adapter: asana
+  config:
+    pii_sanitize: true                          # MX-specific patterns redacted before write:
+                                                # RFC, CURP, CLABE, card numbers, phone numbers
+
+# ─── Design source(s) ─────────────────────────────────────────────────────────
+# Selects which adapter under adapters/design_source/ is the default.
+# Multiple adapters may be enabled; the default applies when the ticket has a Figma link.
+design_source:
+  default: figma
+  adapters:
+    figma:
+      enabled: true                             # may be flipped by pipeline-feedback circuit breaker
+      hallucination_threshold_pct: 20           # >20% → circuit-break (flip enabled to false)
+      circuit_breaker_min_runs: 5               # need ≥5 runs of history before tripping
+      mcp_server: figma                         # name of the registered Figma MCP server
+    image:
+      enabled: false                            # adapter stubbed in v1
+    markup:
+      enabled: false                            # adapter stubbed in v1
+
+# ─── Merge request policy ─────────────────────────────────────────────────────
+mr:
+  policy: single-commit-amend                   # `git commit --amend` + `git push --force` on feature branch
+  branch_pattern: "feature/{ticket_id}-{slug}"
+  pre_push:
+    - dart format .
+    - dart analyze
+    - flutter test
+
+# ─── Pipeline operational settings ────────────────────────────────────────────
+pipeline:
+  default_mode: guided                          # one of: guided | semi | auto
+  modes_available: [guided, semi, auto]
+  cost_warn_usd: 3.00
+  cost_hard_stop_usd: 5.00
+  unreliable_threshold:                         # auto-force guided mode when last N runs are unreliable
+    runs_window: 5
+    bad_runs_required: 3                        # ≥3 of last 5
+    manual_corrections_per_run: 5               # bad = manual_code_corrections >= 5
+
+# ─── Gates ────────────────────────────────────────────────────────────────────
+# Which gates run per layer. Each entry references a folder under alea/gates/.
+gates:
+  domain: [domain]
+  infrastructure: [infra]
+  presentation: [presentation, fidelity]        # fidelity only runs when nds_ref is present in spec
+  bugfix: [bugfix]
+
+# ─── Analyzers (override which analyzers run per gate) ────────────────────────
+# Default: all analyzers run on every gate. Override here if a project wants to
+# disable specific analyzers or remap severity.
+analyzers:
+  enabled:                                      # empty list = use defaults
+    - layer_integrity
+    - widget_purity
+    - build_method_complexity
+    - state_mgmt
+    - testing
+    - flutter_antipatterns
+    - design_principles
+    - dry_detection
+    - code_complexity
+    - performance
+    - project_conventions
+    - security
+    - visual_fidelity                           # only emits issues when NDS is present
+  severity_overrides: {}                        # e.g. { dry_detection: minor }
+
+# ─── Documentation links (consumer-side) ──────────────────────────────────────
+docs:
+  testing_conventions: docs/testing.md
+  architecture_doc: docs/arquitecture.md

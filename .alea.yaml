@@ -1,0 +1,158 @@
+# ALEA — self-config.
+#
+# ALEA eats its own dogfood: this file describes ALEA's internal architecture
+# so the PackageBoundaryAnalyzer can enforce the invariants declared in
+# docs/adr/0001-architectural-invariants.md against the ALEA codebase itself.
+#
+# This config is consumed by `tool/check_alea_boundaries.dart` (CI guard).
+# It is NOT what a consumer Flutter project's `.alea.yaml` looks like — see
+# `config/examples/sample_app.yaml` for that.
+
+config_version: "1.0.0"
+
+project:
+  package_name: alea_flow
+  pubspec_path: pubspec.yaml
+  display_name: "alea_flow — Flutter pipeline tool from the ALEA suite"
+
+architecture:
+  # Single layer covering all package source. The architectural rules that
+  # matter for ALEA are expressed as package_boundaries below, not as Clean
+  # Architecture layers — ALEA is a library, not an application.
+  layers:
+    package:
+      paths:
+        - lib/
+
+  package_boundaries:
+    - name: contracts_purity
+      description: >
+        Contracts are the most stable layer. They define the ports of the
+        hexagonal architecture and must remain a thin, pure surface. They
+        may only depend on dart:core, dart:async, dart:convert, and the
+        meta annotation library.
+      applies_to:
+        - lib/src/contracts/
+      forbid:
+        - dart:io
+        - dart:ffi
+        - dart:mirrors
+        - package:analyzer/
+        - package:path/
+        - package:yaml/
+        - package:args/
+        - package:alea_flow/src/analyzers/
+        - package:alea_flow/src/adapters/
+        - package:alea_flow/src/core/
+
+    - name: analyzers_isolation
+      description: >
+        Analyzers consume contracts only. Inverted dependencies on adapters
+        would defeat the Ports & Adapters design and couple the static
+        analysis surface to external systems.
+      applies_to:
+        - lib/src/analyzers/
+      forbid:
+        - package:alea_flow/src/adapters/
+
+    - name: matching_purity
+      description: >
+        The matching/ library is pure mathematics — color distance, fuzzy
+        scoring, quantization. It is meant to be importable by anyone
+        (including non-Flutter Dart code) without pulling I/O. The same
+        rules apply to the public entry point lib/matching.dart so that a
+        rogue re-export cannot smuggle dart:io through the back door.
+      applies_to:
+        - lib/src/matching/
+        - lib/matching.dart
+      forbid:
+        - dart:io
+        - dart:ffi
+        - package:analyzer/
+        - package:path/
+        - package:yaml/
+        - package:args/
+
+    - name: core_orchestration_boundaries
+      description: >
+        Core orchestration owns the runner, registry, reporter, journal
+        and context-packet builder. It must not reach across into adapters
+        directly — adapter selection happens by name lookup against config,
+        never by import.
+      applies_to:
+        - lib/src/core/
+      forbid:
+        - package:alea_flow/src/adapters/
+
+    - name: service_layer_isolation
+      description: >
+        Services that orchestrate contracts (resolvers, inventory builders,
+        scaffolding executor/verifier/orchestrator) live one ring outside
+        core but one ring inside the adapter ring. They may import contracts
+        and other services, but they must not import adapters — otherwise
+        the indirection that lets analyzers consume them is defeated.
+      applies_to:
+        - lib/src/resolvers/
+        - lib/src/inventory/
+        - lib/src/scaffolding/
+      forbid:
+        - package:alea_flow/src/adapters/
+
+state_management:
+  style: none
+  rules: {}
+
+routing:
+  package: none
+  router_path: ""
+
+theme:
+  path: ""
+  brand_colors: {}
+  typography: {}
+
+testing:
+  framework: dart_test
+  fakes_path: test/fakes/
+  pattern: aaa
+  override_target: repository
+  prefer_fakes_over_mocks: true
+  fake_class_pattern: "Fake{Name}Repository"
+
+coverage:
+  thresholds:
+    package: 80
+
+ticket_source:
+  adapter: file
+
+design_source:
+  default: file
+  adapters: {}
+
+mr:
+  policy: single-commit-amend
+  branch_pattern: "feature/{ticket_id}-{slug}"
+  pre_push:
+    - dart format --output=none --set-exit-if-changed .
+    - dart analyze
+    - dart test
+
+pipeline:
+  default_mode: guided
+  modes_available: [guided]
+  cost_warn_usd: 0.0
+  cost_hard_stop_usd: 0.0
+  unreliable_threshold:
+    runs_window: 5
+    bad_runs_required: 3
+    manual_corrections_per_run: 5
+
+gates:
+  package:
+    - package_boundary
+
+analyzers:
+  enabled:
+    - package_boundary
+  severity_overrides: {}

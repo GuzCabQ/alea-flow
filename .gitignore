@@ -1,0 +1,30 @@
+# Dart / pub
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Don't commit pubspec.lock for libraries (only for apps).
+# See https://dart.dev/guides/libraries/private-files
+pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.history/
+
+# Native compile artifacts (kept out — regenerate via tool/compile.sh)
+bin/aflow
+
+# Test / coverage outputs
+coverage/
+.coverage
+
+# Pipeline runs (consumer-side, never committed)
+.pipeline/
+
+# OS junk
+.DS_Store
+Thumbs.db

@@ -1,0 +1,64 @@
+{
+  "color": {
+    "brand": {
+      "primary": {
+        "value": "#DA1884",
+        "type": "color"
+      },
+      "secondary": {
+        "value": "#E0F5F5",
+        "type": "color"
+      }
+    },
+    "neutral": {
+      "background": {
+        "value": "#FFF7F8FA",
+        "type": "color"
+      },
+      "overlay": {
+        "value": "#80000000",
+        "type": "color"
+      }
+    },
+    "shorthand": {
+      "red": {
+        "value": "#F00"
+      }
+    }
+  },
+  "typography": {
+    "body": {
+      "value": {
+        "fontSize": 16,
+        "fontWeight": 400,
+        "fontFamily": "DM Sans"
+      },
+      "type": "typography"
+    },
+    "headline": {
+      "value": {
+        "fontSize": 24,
+        "fontWeight": 700
+      }
+    }
+  },
+  "spacing": {
+    "gutter": {
+      "value": "16px"
+    },
+    "section": {
+      "value": 32
+    },
+    "ratio": {
+      "value": "5%"
+    }
+  },
+  "radii": {
+    "small": {
+      "value": 4
+    },
+    "medium": {
+      "value": 8
+    }
+  }
+}

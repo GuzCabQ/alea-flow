@@ -1,0 +1,4 @@
+PLACEHOLDER — this is not a real PNG. The visual_fidelity analyzer's
+asset_path_broken rule only checks for file existence (File.existsSync),
+not file validity. So a 1-byte text file at this path is enough to make
+`Image.asset('assets/exists.png')` not trigger the rule.

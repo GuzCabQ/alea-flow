@@ -1,0 +1,350 @@
+# Spec Schema — Output of `/design-feature`
+#
+# Produced by: `core/commands/design-feature` (feature tickets only).
+# Consumed by: `core/commands/implement-domain`, `implement-infra`,
+#              `implement-presentation`, `review-feature`, `validate-functional`.
+#
+# Written to: `.pipeline/runs/<ticket_id>/spec.json`.
+#
+# Bugfix tickets skip this artifact and go straight from `analysis.json` to
+# `implement-bugfix.md`.
+
+contract_version: "1.0.0"
+contract_status: draft
+
+# ─── Top-level required fields ────────────────────────────────────────────────
+required:
+  - ticket_id
+  - type
+  - title
+  - design_source
+  - domain
+  - data
+  - presentation
+  - success_criteria_map
+  - approved
+  - created_at
+
+# ─── Field-by-field schema ────────────────────────────────────────────────────
+
+ticket_id:
+  type: string
+  description: Echoes `analysis.json::ticket_id`.
+
+type:
+  type: string
+  enum: [feature]
+  description: Always `feature`. Bugfix tickets do not produce a spec.
+
+title:
+  type: string
+  description: Echoes `analysis.json::title`.
+
+design_source:
+  type: DesignSourceUsed
+  description: How the design was sourced for this spec. Source-agnostic — no
+    field, value, or enum member here mentions a specific design tool. Adapter
+    names appear ONLY in the `adapter` field as snake_case strings (e.g.
+    `figma`, `image`, `markup`, `sketch`, `adobe_xd`).
+
+DesignSourceUsed:
+  type: object
+  required: [status]
+  fields:
+    status:
+      type: string
+      enum: [extracted, none, disabled]
+      description: |
+        - `extracted`: a design-source adapter ran and produced NDS. `adapter`
+                       and `nds_ref` are set.
+        - `none`:      the ticket had no design references in `attachments[]`,
+                       or no enabled adapter matched any attachment. `adapter`
+                       and `nds_ref` are null.
+        - `disabled`:  the adapter that would have matched is disabled by the
+                       circuit breaker (`pipeline-feedback`) or by consumer
+                       config. `adapter` is set to its name for audit; `nds_ref`
+                       is null. Spec falls back to code-only conventions.
+    adapter:
+      type: snake_case_string | null
+      default: null
+      description: Name of the design-source adapter that ran (or would have ran,
+        for `status: disabled`). Must match a folder under `adapters/design_source/`.
+        Required when `status` is `extracted` or `disabled`.
+    nds_ref:
+      type: relative_path | null
+      default: null
+      description: Path to the NDS YAML file relative to the run directory
+        (e.g. `figma/nds.yaml`, `image/nds.yaml`). Required when `status: extracted`.
+        Code-gen adapters consume the NDS at this path; they do NOT need to know
+        which design source produced it.
+    attachment_uri:
+      type: string | null
+      default: null
+      description: URI of the `analysis.json::attachments[*]` entry that triggered
+        this adapter. Audit trail — lets reviewers see exactly which attachment
+        drove the decision. Required when `status` is `extracted` or `disabled`.
+
+domain:
+  type: object
+  required: [entities, repository_contracts]
+  fields:
+    entities:
+      type: list<EntitySpec>
+    value_objects:
+      type: list<ValueObjectSpec>
+      default: []
+    repository_contracts:
+      type: list<RepositoryContractSpec>
+
+EntitySpec:
+  type: object
+  required: [name, fields]
+  fields:
+    name:
+      type: pascal_case_string
+    fields:
+      type: list<FieldSpec>
+    validations:
+      type: list<string>
+      default: []
+      description: Validation rules expressed as predicates (e.g. "age >= 18").
+
+FieldSpec:
+  type: object
+  required: [name, type, nullable]
+  fields:
+    name:
+      type: camel_case_string
+    type:
+      type: dart_type_string
+      description: Dart type as written in source (e.g. `String`, `int?`,
+        `List<Item>`, `DateTime`).
+    nullable:
+      type: bool
+
+ValueObjectSpec:
+  type: object
+  required: [name, fields]
+  fields:
+    name:
+      type: pascal_case_string
+    fields:
+      type: list<FieldSpec>
+    invariants:
+      type: list<string>
+      default: []
+
+RepositoryContractSpec:
+  type: object
+  required: [name, methods]
+  fields:
+    name:
+      type: pascal_case_string
+      pattern: "Repository$"
+    methods:
+      type: list<MethodSpec>
+
+MethodSpec:
+  type: object
+  required: [signature]
+  fields:
+    signature:
+      type: dart_signature_string
+      description: Full method signature as written (e.g.
+        `Future<Entity> getById(String id)`).
+    throws:
+      type: list<string>
+      default: []
+      description: Exception types the method may throw.
+
+data:
+  type: object
+  required: [dtos, repositories]
+  fields:
+    dtos:
+      type: list<DtoSpec>
+    repositories:
+      type: list<RepositoryImplSpec>
+
+DtoSpec:
+  type: object
+  required: [name, maps_to, json_fields]
+  fields:
+    name:
+      type: pascal_case_string
+      pattern: "Dto$"
+    maps_to:
+      type: pascal_case_string
+      description: Name of the domain entity this DTO maps to.
+    json_fields:
+      type: list<JsonFieldSpec>
+
+JsonFieldSpec:
+  type: object
+  required: [json, dart, type]
+  fields:
+    json:
+      type: snake_case_string
+    dart:
+      type: camel_case_string
+    type:
+      type: dart_type_string
+
+RepositoryImplSpec:
+  type: object
+  required: [name, implements]
+  fields:
+    name:
+      type: pascal_case_string
+      pattern: "Impl$"
+    implements:
+      type: pascal_case_string
+    dependencies:
+      type: list<string>
+      default: []
+    endpoints:
+      type: list<EndpointSpec>
+      default: []
+
+EndpointSpec:
+  type: object
+  fields:
+    method:
+      type: string
+      enum: [GET, POST, PUT, PATCH, DELETE]
+    path:
+      type: string
+    description:
+      type: string | null
+
+presentation:
+  type: object
+  required: [providers, pages, widgets_reuse, widgets_new, routes]
+  fields:
+    providers:
+      type: list<ProviderSpec>
+    pages:
+      type: list<PageSpec>
+    widgets_reuse:
+      type: list<WidgetReuseSpec>
+      description: Widgets from the consumer's shared widget catalog that should
+        be reused. Populated by the design-source adapter's widget audit.
+    widgets_new:
+      type: list<WidgetNewSpec>
+      description: New widgets to create. Each maps to an NDS element with
+        `decision: CREATE_NEW`.
+    routes:
+      type: list<string>
+      description: Route paths to register in the consumer's router file.
+
+ProviderSpec:
+  type: object
+  required: [name, state_class, state_fields, actions]
+  fields:
+    name:
+      type: pascal_case_string
+      pattern: "Notifier$"
+    state_class:
+      type: pascal_case_string
+      pattern: "State$"
+    state_fields:
+      type: list<string>
+      description: Field declarations as written (e.g. `List<Entity> items`).
+    actions:
+      type: list<string>
+      description: Method signatures (e.g. `load()`, `refresh()`).
+
+PageSpec:
+  type: object
+  required: [name, route, states]
+  fields:
+    name:
+      type: pascal_case_string
+      pattern: "Page$"
+    route:
+      type: string
+      pattern: "^/"
+    states:
+      type: list<string>
+      enum_items: [loading, error, empty, success, initial, loaded]
+      min_items: 2
+
+WidgetReuseSpec:
+  type: object
+  required: [name, decision]
+  fields:
+    name:
+      type: pascal_case_string
+    decision:
+      type: string
+      enum: [USE_AS_IS, ADAPT]
+    file:
+      type: relative_path | null
+      default: null
+    changes:
+      type: list<string>
+      default: []
+      description: For `ADAPT` decisions, the list of changes to apply
+        (e.g. "add optional param `isFullWidth` (default false)").
+
+WidgetNewSpec:
+  type: object
+  required: [name, props]
+  fields:
+    name:
+      type: pascal_case_string
+    props:
+      type: list<PropSpec>
+    placement:
+      type: relative_path | null
+      default: null
+      description: Suggested file location. Defaults to feature folder.
+
+PropSpec:
+  type: object
+  required: [name, type]
+  fields:
+    name:
+      type: camel_case_string
+    type:
+      type: dart_type_string
+    default:
+      type: string | null
+      default: null
+      description: Default value expression as Dart source.
+
+success_criteria_map:
+  type: map<string, list<string>>
+  description: Each `analysis.json::success_criteria` entry maps to ≥1
+    component name from this spec. Used by `review-feature` to verify coverage.
+
+approved:
+  type: bool
+  default: false
+  description: Set to true by `/pipeline` after Gate 0 approval (or auto in
+    `auto` mode). Implementers refuse to run on `approved: false`.
+
+created_at:
+  type: ISO8601
+
+# ─── Completeness checks enforced by `/design-feature` ────────────────────────
+#
+# Before writing this file, design-feature runs these checks. Failures trigger
+# up to 2 retry passes; persistent failures escalate to Question Gate.
+#
+# 1. Every entry in `analysis.json::success_criteria` appears as a key in
+#    `success_criteria_map` AND maps to ≥1 component in this spec.
+# 2. Every `pages[*]` has ≥2 entries in `states[]`.
+# 3. Every `domain.repository_contracts[*]` has ≥1 corresponding entry in
+#    `data.repositories[]` (matched by `implements` field).
+# 4. Every `presentation.providers[*]` has a defined `state_class`,
+#    `state_fields` (non-empty), and `actions` (non-empty).
+# 5. When `design_source.status: extracted`, `design_source.adapter`,
+#    `design_source.nds_ref`, and `design_source.attachment_uri` must all be
+#    non-null. The NDS file at `nds_ref` must exist on disk and validate against
+#    `nds.schema.yaml`. The attachment_uri must appear in
+#    `analysis.json::attachments[*].uri`.
+# 6. When `design_source.status: disabled`, `adapter` and `attachment_uri` must
+#    be non-null (so reviewers can see what WOULD have run); `nds_ref` must be null.
+# 7. When `design_source.status: none`, `adapter`, `nds_ref`, and `attachment_uri`
+#    must all be null.
