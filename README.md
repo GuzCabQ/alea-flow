@@ -17,7 +17,7 @@ Everything project-specific lives in **`.alea.yaml`**. Everything reusable lives
 
 ## Status
 
-**v0.1.0** — every architectural phase (0 through 9) is complete and
+**v0.1.1** — every architectural phase (0 through 9) is complete and
 green. Parity testing against a real consumer project precedes the
 permanent `1.0.0` tag.
 
@@ -34,116 +34,245 @@ permanent `1.0.0` tag.
 | 8  | Cacheable context packet (TTL + hash invalidation) | 19 |
 | 9  | Consolidated CLI (`aflow analyze \| match \| scaffold \| inventory \| journal \| context`) | 11 |
 | 10 | Monorepo + bootstrap — `aflow init` (project / feature templates) + external token catalog source ([ADR-0011](docs/adr/0011-monorepo-and-bootstrap-strategy.md)) | 11 |
-| | | **320 total** |
+| 11 | Existing-project bootstrap — `aflow init --template config` ([ADR-0012](docs/adr/0012-init-template-config.md)) | 37 |
+| | | **625 total** (run `dart test` for the current total) |
+
+<!-- TODO(next release): the per-phase "Tests" column above is stale/approximate
+     and does not account for cross-cutting + newer analyzer tests
+     (testing/flutter_antipatterns/code_complexity were added in 0.1.1).
+     The graph implementation was extracted to dart_source_graph ^0.1.0 (ADR-0022),
+     reducing the inline test count.
+     Recount tests per phase and reconcile the column so it sums to 625. -->
 
 ---
 
-## Quickstart (consumer projects)
+## Quickstart
 
-### 1 — Add `.alea.yaml` to your project root
+From an existing Flutter (or Dart) project to a working ALEA setup in
+three steps. Each step is copy-pasteable as-is from inside your project
+root.
 
-Minimal config (see [`docs/CONSUMER_INTEGRATION.md`](docs/CONSUMER_INTEGRATION.md) for the full reference):
-
-```yaml
-config_version: "1.0.0"
-
-project:
-  package_name: my_app
-  pubspec_path: pubspec.yaml
-
-architecture:
-  layers:
-    domain:
-      paths: [lib/src/domain/]
-      forbid_imports: ["package:flutter/"]
-    infrastructure:
-      paths: [lib/src/infrastructure/]
-      may_import: [domain]
-    presentation:
-      paths: [lib/src/presentation/]
-      may_import: [domain]
-
-state_management:
-  style: riverpod_manual    # or bloc, provider, getx, …
-
-routing:
-  package: go_router
-  router_path: lib/src/app/router.dart
-
-theme:
-  path: lib/src/theme/
-  token_catalog:
-    adapter: dart_source
-    source: lib/src/theme/
-
-testing:
-  framework: flutter_test
-  fakes_path: test/fakes/
-
-coverage:
-  thresholds: { domain: 95, infrastructure: 80, presentation: 70 }
-
-ticket_source: { adapter: file }
-design_source: { default: figma }
-
-mr:
-  policy: single-commit-amend
-  branch_pattern: "feature/{ticket_id}-{slug}"
-  pre_push: [dart format ., dart analyze, flutter test]
-
-pipeline:
-  default_mode: guided
-  modes_available: [guided, semi, auto]
-  cost_warn_usd: 3.0
-  cost_hard_stop_usd: 5.0
-
-gates:
-  domain: [domain]
-  infrastructure: [infra]
-  presentation: [presentation]
-```
-
-### 2 — Install ALEA
+### 1 — Install ALEA
 
 ```bash
 dart pub global activate --source path /path/to/alea
-# or in the future, when published:
-# dart pub global activate alea
+# or, once published:
+# dart pub global activate alea_flow
 ```
 
-Compile to a native executable (eliminates Dart VM cold start):
+Optionally compile to a native executable (eliminates Dart VM cold start):
 
 ```bash
 cd /path/to/alea
 ./tool/compile.sh
-# now `bin/aflow` is a self-contained ~10MB binary
+# `bin/aflow` is now a self-contained ~10MB binary
 ```
 
-### 3 — Run a subcommand
+### 2 — Generate `.alea.yaml` from your project
+
+Inside your existing Flutter (or Dart) project root:
 
 ```bash
-# Bootstrap a project skeleton (post `flutter create`) or a feature package
-alea init my_app                              # default: --template project
-alea init feature_wallet --template feature   # monorepo feature package
+aflow init --template config
+```
 
-# Static analysis: produce a gate report
-alea analyze --project-root . --gate domain --format human
+This reads your `pubspec.yaml`, scans the filesystem for canonical
+Clean Architecture layer folders (`lib/src/{domain,infrastructure,
+presentation}/` and theme), and writes a starter `.alea.yaml`. Every
+generated field carries a comment documenting its origin:
 
+- `# inferred from <X>` — auto-detected from your `pubspec.yaml`
+  (state management, routing, Flutter vs Dart project).
+- `# detected at <path>` — folder confirmed by the filesystem scan.
+- `# default` — industry-standard fallback; adjust if needed.
+- `# PLACEHOLDER` — could not auto-detect; **human action required**.
+
+Open `.alea.yaml`, search for `# PLACEHOLDER`, and adjust those blocks
+to match your project. Common cases that produce placeholders:
+
+- Layer folders not under `lib/src/<layer>/` or `lib/<layer>/`
+  (for example, `data/` instead of `infrastructure/`, Spanish names
+  like `dominio/`, or feature-first layouts under
+  `lib/features/<feature>/<layer>/`).
+- A `pubspec.yaml` with no known state-management or routing dependency.
+
+Detection is intentionally conservative in this release. To resolve the
+placeholders above automatically, run the **`/aflow-complete-config`** command
+(an AI prompt under [`core/commands/`](core/commands/)): it builds the
+code-knowledge-graph for your project and proposes `architecture.layers`
+paths plus `may_import` / `forbid_imports` from your **real dependency
+edges** — handling non-canonical names and feature-first layouts — then
+shows a diff for you to approve. It also flags import cycles and any
+domain layer that imports `package:flutter`. The broader diagnostics-driven
+flow is tracked in
+[Proposal 0001](docs/proposals/0001-adoption-flow-overhaul.md); the full
+configuration reference lives in
+[`docs/CONSUMER_INTEGRATION.md`](docs/CONSUMER_INTEGRATION.md).
+
+### 3 — Run your first analysis
+
+```bash
+aflow analyze --gate domain --format human
+```
+
+ALEA loads `.alea.yaml`, runs the domain-layer gate, and prints findings
+to the terminal. If you have not yet created the layer folders, this is
+the moment they will be flagged — the gate is the truth source about
+whether your config matches reality.
+
+For a **browsable, triage-first report** instead of the terminal wall, add
+`--format html`:
+
+```bash
+aflow analyze --gate full --format html -o alea-reports/
+```
+
+This writes a self-contained `alea-reports/` folder (`index.html` + `styles.css` +
+`app.js` + `report.json`) — open `alea-reports/index.html` in a browser. It surfaces
+the few **blocking** findings (blocker/critical) above the many **advisory** ones
+(major/minor), with grouping by severity / file / analyzer, live filters and search.
+With `--format html`, `-o` is the output **directory** (default `alea-reports/`). Add
+`alea-reports/` to your `.gitignore`.
+
+---
+
+## Which `init` template do I need?
+
+The Quickstart above uses `--template config`. That is the right choice
+for **existing** projects. Pick once, based on the state of your project:
+
+| Your situation | Command | What it produces |
+|---|---|---|
+| Existing Flutter or Dart project with code | `aflow init --template config` | Only `.alea.yaml`, generated from your `pubspec.yaml` + filesystem scan (the [Quickstart](#quickstart) above). |
+| Fresh project just created with `flutter create` | `aflow init --template project` | `.alea.yaml` + empty layer folders + a theme tokens stub + a `go_router` stub + `test/fakes/`. Defaults assume Riverpod + `go_router`; add the matching deps to your `pubspec.yaml` if you have not already. |
+| New Dart feature package in a Melos / pub workspaces monorepo | `aflow init feature_x --template feature` | A Dart package skeleton with `.alea.yaml` pointing its token catalog at a sibling `design_system` package (see [ADR-0011](docs/adr/0011-monorepo-and-bootstrap-strategy.md)). |
+
+If you ran `flutter create my_app` minutes ago, **use `--template project`** — the `config` flow expects an existing project to read from, and on a brand-new Flutter skeleton it will produce a `.alea.yaml` full of `# PLACEHOLDER` blocks because the layer folders do not yet exist.
+
+---
+
+## Other useful commands
+
+Once `.alea.yaml` is in place, these subcommands become available:
+
+```bash
 # Resolve a hex color against your token catalog
-alea match color "#0066CC"
+aflow match color "#0066CC"
 
 # Scaffold a Riverpod feature (state + notifier + screen)
-alea scaffold auth --layer presentation --style riverpod_manual
+aflow scaffold auth --layer presentation --style riverpod_manual
 
 # Scan widgets and emit a JSON inventory
-alea inventory --output widget_inventory.json
+aflow inventory --output widget_inventory.json
 
 # Build a context packet for the next LLM call
-alea context --run-directory .pipeline/runs/DEV-1234/
+aflow context --run-directory .pipeline/runs/DEV-1234/
 
 # Inspect the JSONL run journal
-alea journal --run-directory .pipeline/runs/DEV-1234/
+aflow journal --run-directory .pipeline/runs/DEV-1234/
 ```
+
+---
+
+## Running the ticket → PR pipeline
+
+`.alea.yaml` enables a slash-command pipeline defined under
+[`core/commands/`](core/commands/). These are markdown prompts intended
+to be executed by an **AI-driven CLI** that supports user-invokable
+instruction files. The package itself does not call any AI API directly.
+
+Compatible tools (the registration mechanism varies by tool):
+
+- Claude Code (custom commands or skill files)
+- Cursor (commands via Composer)
+- Gemini CLI
+- Copilot CLI
+- Codex
+
+### Installing the commands into your agent
+
+`aflow install-commands` deterministically installs the bundled prompts into
+your AI agent platform. Run it from your project root:
+
+```bash
+# Interactive menu — select one or more platforms
+aflow install-commands
+
+# Non-interactive — specify platforms explicitly (or use "all")
+aflow install-commands --platform claude
+aflow install-commands --platform claude,gemini,codex,cursor
+aflow install-commands --platform all
+
+# Preview what would be written without touching the filesystem
+aflow install-commands --platform all --dry-run
+```
+
+Four platforms are supported in v1:
+
+| Platform | Destination | Notes |
+|---|---|---|
+| `claude` | `.claude/commands/<id>.md` | YAML frontmatter `description`; `$ARGUMENTS` native |
+| `gemini` | `.gemini/commands/<id>.toml` | TOML format; `$ARGUMENTS` rewritten to `{{args}}` |
+| `codex` | `~/.codex/prompts/<id>.md` (or `$CODEX_HOME/prompts/`) | **Global install** — covers all projects on the machine; Codex custom prompts are deprecated upstream in favour of skills, but remain functional |
+| `cursor` | `.cursor/commands/<id>.md` | YAML frontmatter `name` + `description`; `$ARGUMENTS` kept as-is |
+
+`aflow init --platform <id>` runs the same install at the end of
+onboarding, so a single command bootstraps the config and the commands:
+
+```bash
+aflow init --template config --platform claude
+```
+
+For platforms not yet covered by a deterministic adapter, the agent-driven
+fallback remains available:
+
+```bash
+aflow commands-path
+# → prints the dir holding the prompts + INSTALL.md
+# Open that dir's INSTALL.md in your agent and ask it to follow the steps.
+```
+
+See [ADR-0021](docs/adr/0021-deterministic-command-install.md) for the
+design decisions and per-platform format details.
+
+From inside a project that has `.alea.yaml`, point your AI tool at the
+`core/commands/` folder of this package and ask it to follow
+[`aflow-pipeline.md`](core/commands/aflow-pipeline.md) for a given ticket. The
+pipeline drives the full flow: reads the ticket, generates a spec,
+implements each architectural layer, runs gates per layer, reviews, and
+creates the MR. All artifacts land in `.pipeline/runs/<ticket_id>/`.
+
+Three execution modes are available via `.alea.yaml::pipeline.default_mode`:
+
+| Mode | Stops at |
+|---|---|
+| `guided` | Every gate — explicit approval required before each phase. |
+| `semi` | Gate 0 (spec approval) and Gate Final (review) only. |
+| `auto` | Only when a validator fails. |
+
+Other useful command files in the same folder, each invokable on its own:
+
+- [`aflow-analyze-ticket.md`](core/commands/aflow-analyze-ticket.md) — parse a ticket into structured analysis.
+- [`aflow-design-feature.md`](core/commands/aflow-design-feature.md) — turn an analysis into a spec.
+- [`aflow-implement-domain.md`](core/commands/aflow-implement-domain.md), [`aflow-implement-infrastructure.md`](core/commands/aflow-implement-infrastructure.md), [`aflow-implement-presentation.md`](core/commands/aflow-implement-presentation.md) — per-layer implementation.
+- [`aflow-implement-bugfix.md`](core/commands/aflow-implement-bugfix.md) — bugfix flow (no design phase).
+- [`aflow-run-gates.md`](core/commands/aflow-run-gates.md) — invoke the analyzer suite for a layer.
+- [`aflow-review-feature.md`](core/commands/aflow-review-feature.md), [`aflow-validate-functional.md`](core/commands/aflow-validate-functional.md) — pre-MR checks.
+- [`aflow-create-mr.md`](core/commands/aflow-create-mr.md), [`aflow-qa-handoff.md`](core/commands/aflow-qa-handoff.md), [`aflow-merge.md`](core/commands/aflow-merge.md) — final delivery.
+- [`aflow-complete-config.md`](core/commands/aflow-complete-config.md) — graph-grounded `.alea.yaml` enrichment: proposes layer paths + import rules from the code graph (see [Quickstart](#quickstart)).
+- [`aflow-review-diff.md`](core/commands/aflow-review-diff.md) — standalone review over `git diff`, **no pipeline run required** (structural gates + graph-based regression check + code review).
+
+The pipeline phases consult the code-knowledge-graph as a verified-fact source: `analyze-ticket` estimates blast radius (`graph-query impact`), `design-feature` finds reuse candidates (`neighbors`), `review-feature` flags untouched consumers as potential regressions, and `run-gates` warns on high-coupling hubs (`god-nodes`). The graph is built once and refreshed only when the tree changes (`aflow graph --ensure-fresh`).
+
+The graph uses an **opt-out coverage** model: it collects every `.dart` under `lib/`, and a blind spot can exist only via an explicit `graph.exclude` glob (defaults exclude generated `*.g.dart`/`*.freezed.dart`). Layer paths only *classify* the collected set — files outside every declared layer are surfaced (never dropped) by `graph-query unlayered`, which `/aflow-complete-config` uses to propose declaring or excluding them. Declaration nodes carry a semantic `role` (e.g. `riverpod.notifier`, `getx.controller`, `flutter.widget`) derived from their supertype (extend via `graph.roles`); method/function nodes plus `calls` edges (by-name, marked `ambiguous`) let `graph-query state-flow` summarize which providers/controllers each role-tagged node depends on. See [ADR-0019](docs/adr/0019-graph-as-pipeline-and-config-engine.md) and [ADR-0020](docs/adr/0020-graph-slice-2-precision.md).
+
+> **Implementation note.** The graph engine (builder, resolver, wiring-edge pass, query) now lives in the external [`dart_source_graph`](https://pub.dev/packages/dart_source_graph) package (`^0.1.0`), on which alea-flow depends. The `aflow graph` and `aflow graph-query` subcommands are unchanged thin wrappers — their flags, output schema, and exit codes are identical to the inline implementation. See [ADR-0022](docs/adr/0022-graph-extracted-to-package.md) for the extraction rationale and parity verification.
+
+> **Maturity note.** The pipeline is the part of alea-flow that has not
+> yet been validated against a real consumer project (see [Status](#status)
+> — v0.1.1 awaits parity testing for the v1.0.0 tag). Treat this as a
+> preview path that works in principle but may require human
+> course-correction. Bug reports against `core/commands/` are welcome.
 
 ---
 
@@ -162,9 +291,11 @@ ALEA tree itself on every CI build.
                                        │
               ┌────────────────────────▼────────────────────────────┐
               │                  lib/src/cli/                        │
-              │  CommandRunner + 6 command classes                   │
-              │  (analyze, match, scaffold, inventory, journal,      │
-              │   context)                                           │
+              │  CommandRunner + 15 command classes                  │
+              │  (init, analyze, match, scaffold, inventory,         │
+              │   journal, context, redact, check-files-changed,     │
+              │   validate-artifact, metrics, run, graph,            │
+              │   graph-query, install-commands)                      │
               └────────────────────────┬────────────────────────────┘
                                        │
         ┌──────────────────────────────▼──────────────────────────────┐
@@ -221,7 +352,9 @@ alea/
 │       ├── analyzers/           ← 16 analyzers (layer_integrity, visual_fidelity, …)
 │       ├── cli/
 │       │   ├── cli_runner.dart
-│       │   └── commands/{analyze,match,scaffold,inventory,journal,context}_command.dart
+│       │   └── commands/{init,analyze,match,scaffold,inventory,journal,context,
+│       │                  redact,check_files_changed,validate_artifact,
+│       │                  metrics,run,graph,graph_query,install_commands}_command.dart
 │       ├── contracts/           ← Ports (the stable API surface)
 │       ├── core/
 │       │   ├── config/loader.dart
@@ -238,11 +371,11 @@ alea/
 │       └── scaffolding/         ← template_engine, scaffold_executor, scaffold_verifier
 ├── docs/
 │   ├── CONSUMER_INTEGRATION.md  ← step-by-step guide for consumer projects
-│   └── adr/                     ← 10 architectural decision records
+│   └── adr/                     ← 18 architectural decision records
 ├── tool/
 │   ├── check_alea_boundaries.dart  ← CI guard — runs PackageBoundaryAnalyzer on ALEA
 │   └── compile.sh                  ← AOT compile to bin/aflow
-├── test/                        ← 309 tests, mirrors lib/src/ layout
+├── test/                        ← 625 tests, mirrors lib/src/ layout (run `dart test` for the current total)
 ├── .alea.yaml                   ← ALEA's own consumer config (eats its dogfood)
 └── pubspec.yaml
 ```
@@ -253,7 +386,7 @@ alea/
 
 - [`docs/PROJECT_WALKTHROUGH.md`](docs/PROJECT_WALKTHROUGH.md) — **visual walkthrough** with mermaid diagrams + ordered reading list. Start here if you're new.
 - [`docs/CONSUMER_INTEGRATION.md`](docs/CONSUMER_INTEGRATION.md) — the full guide for adopting ALEA in a new Flutter project.
-- [`docs/adr/`](docs/adr/) — ten architectural decision records, one per phase (0001 = invariants; 0002 = run journal; … 0010 = CLI consolidation).
+- [`docs/adr/`](docs/adr/) — twenty-two architectural decision records, roughly one per phase (0001 = invariants; 0002 = run journal; … 0012 = existing-project bootstrap; 0013–0020 = HTML report, code-knowledge-graph resolution/wiring/query, self-package resolution, graph slice-2; 0021 = deterministic command install; 0022 = graph extracted to `dart_source_graph`).
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — the original design document.
 - [`CHANGELOG.md`](CHANGELOG.md) — per-version changes.
 
@@ -268,7 +401,7 @@ dart pub get
 # Static analysis
 dart analyze
 
-# Tests (run all 309)
+# Tests (run `dart test` for the current total)
 dart test
 
 # Self-boundary check (ALEA enforces its own invariants)

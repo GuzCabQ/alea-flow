@@ -84,6 +84,7 @@ testing:
   override_target: repository                   # widget tests override repos, NEVER notifiers
   prefer_fakes_over_mocks: true                 # no mocktail unless last resort
   fake_class_pattern: "Fake{Name}Repository"
+  missing_test_severity: major                  # advisory by default; raise to `critical` to block on missing tests
 
 # ─── Coverage thresholds (per layer) ──────────────────────────────────────────
 # Consumed by: gates/<layer>/, review-feature.
@@ -164,6 +165,18 @@ analyzers:
     - security
     - visual_fidelity                           # only emits issues when NDS is present
   severity_overrides: {}                        # e.g. { dry_detection: minor }
+
+# ─── Code-knowledge-graph (aflow graph) ───────────────────────────────────────
+# Optional. The graph uses an OPT-OUT coverage model: it collects every .dart
+# under lib/ and only `exclude` globs create a blind spot. Layer paths (above)
+# only CLASSIFY the collected set; files outside every layer are reported by
+# `aflow graph-query unlayered` (never dropped silently).
+graph:
+  exclude:                                      # merged onto built-in defaults
+    - "**/*.g.dart"                             # generated (default)
+    - "**/*.freezed.dart"                       # generated (default)
+  roles:                                        # extend/override the built-in
+    BaseController: getx.controller             #   supertype → role map
 
 # ─── Documentation links (consumer-side) ──────────────────────────────────────
 docs:

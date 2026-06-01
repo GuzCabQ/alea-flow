@@ -45,6 +45,18 @@ class RunCommand extends Command<int> {
       return 64;
     }
     final ticketId = rest.first;
+
+    // Task 2: Validate ticket_id before using it in any filesystem path.
+    // Only allow [A-Za-z0-9._-]; explicitly reject '..' to block traversal.
+    if (!RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(ticketId) ||
+        ticketId.contains('..')) {
+      stderr.writeln(
+        'Error: invalid ticket_id "$ticketId" — use only letters, digits, '
+        '". _ -" (no slashes or "..").',
+      );
+      return 64; // EX_USAGE
+    }
+
     final projectRoot = p.canonicalize(res['project-root'] as String);
 
     final ProjectConfig config;
@@ -56,12 +68,22 @@ class RunCommand extends Command<int> {
     }
 
     final runDir = p.join(projectRoot, '.pipeline/runs/$ticketId');
+
+    // Task 1: Resolve --schemas-dir under projectRoot when it is relative.
+    // The default value 'contracts/schemas' is relative and must be joined to
+    // projectRoot (not the process CWD) so `aflow run -r /path/to/proj` works
+    // regardless of where the caller's shell is.
+    final rawSchemasDir = res['schemas-dir'] as String;
+    final schemasDir = p.isAbsolute(rawSchemasDir)
+        ? rawSchemasDir
+        : p.join(projectRoot, rawSchemasDir);
+
     final decision = decideRun(
       ticketId: ticketId,
       runDir: runDir,
       config: config,
       projectRoot: projectRoot,
-      schemasDir: res['schemas-dir'] as String,
+      schemasDir: schemasDir,
       requestedMode: (res['mode'] as String?) ?? config.pipeline.defaultMode,
     );
 

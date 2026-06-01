@@ -59,7 +59,7 @@ class CodeComplexityAnalyzer extends Analyzer {
     String file,
     List<AnalysisIssue> issues,
   ) {
-    if (m.complexity > complexityThresholdCritical) {
+    if (!m.exemptFromCyclomatic && m.complexity > complexityThresholdCritical) {
       issues.add(
         AnalysisIssue(
           file: file,
@@ -72,7 +72,8 @@ class CodeComplexityAnalyzer extends Analyzer {
           severity: Severity.critical,
         ),
       );
-    } else if (m.complexity > complexityThresholdMajor) {
+    } else if (!m.exemptFromCyclomatic &&
+        m.complexity > complexityThresholdMajor) {
       issues.add(
         AnalysisIssue(
           file: file,
@@ -122,6 +123,12 @@ class _FunctionMetrics {
   int complexity = 1;
   int length = 0;
   int startLine = 0;
+
+  /// Value-object equality surface (`operator ==`, `hashCode`) is exempt from
+  /// the cyclomatic check: its McCabe count comes from the flat `&&`/`?:` chain
+  /// over fields, not real branching logic (CC-1 calibration). Length still
+  /// applies.
+  bool exemptFromCyclomatic = false;
 }
 
 class _FunctionVisitor extends RecursiveAstVisitor<void> {
@@ -132,7 +139,10 @@ class _FunctionVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitMethodDeclaration(MethodDeclaration node) {
     final metrics = _FunctionMetrics(node.name.lexeme)
-      ..startLine = lineInfo.getLocation(node.offset).lineNumber;
+      ..startLine = lineInfo.getLocation(node.offset).lineNumber
+      ..exemptFromCyclomatic =
+          (node.isOperator && node.name.lexeme == '==') ||
+          (node.isGetter && node.name.lexeme == 'hashCode');
     _measureBody(metrics, node.body);
     functions.add(metrics);
     super.visitMethodDeclaration(node);

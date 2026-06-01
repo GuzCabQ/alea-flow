@@ -7,7 +7,11 @@
 # Written to: `.pipeline/runs/<ticket_id>/analysis.json`.
 
 contract_version: "1.0.0"
-contract_status: draft
+# stable: exercised by `aflow validate-artifact` + test/core/schema/ (accepts
+# valid artifacts; rejects missing-required / enum / pattern / required_when /
+# min_items / nested-object / list-element violations). Breaking changes
+# require a contract_version major bump.
+contract_status: stable
 
 # ─── Top-level required fields ────────────────────────────────────────────────
 required:

@@ -13,7 +13,7 @@ Lee los diagramas de este archivo **mientras** lees los docs de prosa que se ref
 | ¿Qué es ALEA y qué problema resuelve? | [§1](#1-contexto-de-1-minuto) | [../README.md](../README.md) |
 | ¿Cómo está organizado el código? | [§2](#2-mapa-del-paquete) | [../README.md#project-layout](../README.md) |
 | ¿Cuál es la arquitectura? | [§3](#3-arquitectura-ports--adapters) | [../ARCHITECTURE.md](../ARCHITECTURE.md) |
-| ¿Cómo fluye una corrida de ticket → MR? | [§4](#4-secuencia-de-una-corrida-completa) | [../core/commands/pipeline.md](../core/commands/pipeline.md) |
+| ¿Cómo fluye una corrida de ticket → MR? | [§4](#4-secuencia-de-una-corrida-completa) | [../core/commands/aflow-pipeline.md](../core/commands/aflow-pipeline.md) |
 | ¿Cómo se elige un adapter en runtime? | [§5](#5-selección-de-adapters-en-runtime) | [../ARCHITECTURE.md#patterns](../ARCHITECTURE.md) |
 | ¿Qué artefactos produce cada comando? | [§6](#6-flujo-de-artefactos) | [../ARCHITECTURE.md#module-responsibilities](../ARCHITECTURE.md) |
 | ¿Qué hace cada subcomando del CLI? | [§7](#7-mapa-del-cli) | [../README.md#3--run-a-subcommand](../README.md) |
@@ -28,14 +28,14 @@ ALEA es un **paquete Dart distribuible** que orquesta el flujo **ticket → merg
 
 ```mermaid
 flowchart LR
-    T[Ticket<br/>Asana / Linear / file] --> A[/analyze-ticket/]
-    D[Design<br/>Figma / image / markup] --> DF[/design-feature/]
+    T[Ticket<br/>Asana / Linear / file] --> A[/aflow-analyze-ticket/]
+    D[Design<br/>Figma / image / markup] --> DF[/aflow-design-feature/]
     A --> DF
     DF --> I[/implement-*/]
-    I --> G[/run-gates/]
-    G --> R[/review-feature/]
-    R --> MR[/create-mr/]
-    MR --> QA[/qa-handoff/]
+    I --> G[/aflow-run-gates/]
+    G --> R[/aflow-review-feature/]
+    R --> MR[/aflow-create-mr/]
+    MR --> QA[/aflow-qa-handoff/]
 
     style T fill:#E0F5F5
     style D fill:#E0F5F5
@@ -71,13 +71,13 @@ flowchart TB
     end
 
     subgraph contracts_layer[Contracts · API estable]
-        contracts[contracts/<br/>Analyzer, Adapter, Gate<br/>ProjectConfig, AnalysisResult]
+        contracts[contracts/<br/>Analyzer, Adapter<br/>ProjectConfig, AnalysisResult]
     end
 
     subgraph adapters[Adapters · I/O externo]
         cg[code_gen/<br/>riverpod_manual · bloc]
         tc[token_catalog/<br/>dart_source · json]
-        ana[analyzers/<br/>16 reglas]
+        ana[analyzers/<br/>17 reglas]
     end
 
     bin --> runner
@@ -170,26 +170,26 @@ flowchart TB
 
 ## 4. Secuencia de una corrida completa
 
-Una invocación de `/pipeline DEV-1234` ejecuta esto (modo `auto` — sin paradas humanas):
+Una invocación de `/aflow-pipeline DEV-1234` ejecuta esto (modo `auto` — sin paradas humanas):
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Dev as Developer
     participant CC as Claude Code
-    participant P as /pipeline
-    participant A as /analyze-ticket
+    participant P as /aflow-pipeline
+    participant A as /aflow-analyze-ticket
     participant TS as ticket_source<br/>adapter
-    participant DF as /design-feature
+    participant DF as /aflow-design-feature
     participant DS as design_source<br/>adapter
     participant IMP as /implement-*
     participant CG as code_gen<br/>adapter
-    participant G as /run-gates
+    participant G as /aflow-run-gates
     participant CLI as alea CLI
-    participant R as /review · /create-mr · /qa-handoff
+    participant R as /review · /aflow-create-mr · /aflow-qa-handoff
     participant FS as .pipeline/runs/DEV-1234/
 
-    Dev->>CC: /pipeline DEV-1234 --mode auto
+    Dev->>CC: /aflow-pipeline DEV-1234 --mode auto
     CC->>P: invoca
     P->>FS: crea tag git pipeline-DEV-1234-start
     P->>A: invoca
@@ -212,7 +212,7 @@ sequenceDiagram
     end
 
     P->>G: invoca
-    G->>CLI: alea analyze --gate <name>
+    G->>CLI: aflow analyze --gate <name>
     CLI-->>G: AnalysisIssue[] por analyzer
     G->>FS: escribe gate_report.json
 
@@ -228,7 +228,7 @@ sequenceDiagram
 
 **Notas importantes:**
 
-- `/pipeline` es **reanudable**: si se interrumpe, vuelve a correrla y detecta qué artefacto existe último para continuar desde ahí. NUNCA borres artefactos a mano. Usa `--reset` para empezar de cero (crea nuevo tag).
+- `/aflow-pipeline` es **reanudable**: si se interrumpe, vuelve a correrla y detecta qué artefacto existe último para continuar desde ahí. NUNCA borres artefactos a mano. Usa `--reset` para empezar de cero (crea nuevo tag).
 - **Modos** (`pipeline.default_mode` en `.alea.yaml`):
   - `guided` — para en cada gate para aprobación humana.
   - `semi` — solo para en Gate 0 (spec) y Gate Final (review).
@@ -236,7 +236,7 @@ sequenceDiagram
 - **Cost tracking** — cada fase añade a `metrics.json::estimated_cost_usd`. Si rebasa `cost_warn_usd` avisa; si rebasa `cost_hard_stop_usd` aborta.
 - **Circuit breaker design-source** — si un adapter acumula hallucinations sobre cierto umbral, `pipeline-feedback` lo deshabilita en `.pipeline/config.json` automáticamente.
 
-**Comienza por:** [../core/commands/pipeline.md](../core/commands/pipeline.md) (es el corazón del flujo; léelo entero antes de ejecutar manualmente cualquier fase).
+**Comienza por:** [../core/commands/aflow-pipeline.md](../core/commands/aflow-pipeline.md) (es el corazón del flujo; léelo entero antes de ejecutar manualmente cualquier fase).
 
 ---
 
@@ -246,7 +246,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-    cmd[core/commands/analyze-ticket<br/>arranca]
+    cmd[core/commands/aflow-analyze-ticket<br/>arranca]
     config[ProjectConfig<br/>cargado de .alea.yaml]
     name{ticket_source.adapter<br/>= ?}
     reg[registry.dart<br/>name → Adapter constructor]
@@ -289,40 +289,40 @@ graph LR
     ticket[ticket source<br/>Asana / file / ...]
     design[design source<br/>Figma / image / ...]
 
-    yaml --> AT[/analyze-ticket/]
+    yaml --> AT[/aflow-analyze-ticket/]
     ticket --> AT
     AT --> analysisJson[analysis.json]
 
-    analysisJson --> DF[/design-feature/]
+    analysisJson --> DF[/aflow-design-feature/]
     design --> DF
     DF --> specJson[spec.json]
     DF --> ndsYaml[nds.yaml]
 
-    specJson --> ImpD[/implement-domain/]
+    specJson --> ImpD[/aflow-implement-domain/]
     ImpD --> domainImpl[domain_impl.md<br/>+ Dart files]
 
-    specJson --> ImpI[/implement-infrastructure/]
+    specJson --> ImpI[/aflow-implement-infrastructure/]
     ndsYaml --> ImpI
     ImpI --> infraImpl[infrastructure_impl.md<br/>+ Dart files]
 
-    specJson --> ImpP[/implement-presentation/]
+    specJson --> ImpP[/aflow-implement-presentation/]
     ndsYaml --> ImpP
     ImpP --> presImpl[presentation_impl.md<br/>+ Dart files]
 
-    domainImpl --> RG[/run-gates/]
+    domainImpl --> RG[/aflow-run-gates/]
     infraImpl --> RG
     presImpl --> RG
     yaml --> RG
     RG --> gateReport[gate_report.json]
 
-    gateReport --> RV[/review-feature/]
+    gateReport --> RV[/aflow-review-feature/]
     specJson --> RV
     RV --> reviewMd[review.md]
 
-    reviewMd --> CMR[/create-mr/]
+    reviewMd --> CMR[/aflow-create-mr/]
     CMR --> mrJson[mr.json]
 
-    mrJson --> QH[/qa-handoff/]
+    mrJson --> QH[/aflow-qa-handoff/]
     QH --> qaMd[qa_handoff.md]
 
     classDef artifact fill:#E0F5F5,stroke:#4A0E2B
@@ -333,7 +333,7 @@ graph LR
 
 **Reglas:**
 
-1. **Nunca renombres un artefacto.** El nombre del archivo es contrato — `/pipeline`'s resume detecta avance por presencia de archivos con nombres específicos.
+1. **Nunca renombres un artefacto.** El nombre del archivo es contrato — `/aflow-pipeline`'s resume detecta avance por presencia de archivos con nombres específicos.
 2. **Cada comando imprime un summary block delimitado por `═══`** — es la forma estandarizada de comunicar al usuario qué se escribió.
 3. **Los schemas** que validan estos artefactos viven en [../contracts/schemas/](../contracts/schemas/).
 
@@ -343,19 +343,19 @@ graph LR
 
 ## 7. Mapa del CLI
 
-El CLI Dart (compilable a binario nativo de ~10MB) expone 7 subcomandos. La capa de orquestación (slash commands) los invoca; tú también puedes hacerlo directo en CI o en exploración manual.
+El CLI Dart (compilable a binario nativo de ~10MB) expone 14 subcomandos. La capa de orquestación (slash commands) los invoca; tú también puedes hacerlo directo en CI o en exploración manual.
 
 ```mermaid
 flowchart TB
     cli["alea (binary)"]
 
-    cli --> init["alea init [name]<br/>--template project|feature"]
-    cli --> analyze["alea analyze<br/>--gate domain|infra|presentation"]
-    cli --> match["alea match<br/>color #HEX | typography | layout"]
-    cli --> scaffold["alea scaffold &lt;name&gt;<br/>--layer X --style Y"]
-    cli --> inventory["alea inventory<br/>--output JSON"]
-    cli --> journal["alea journal<br/>--run-directory PATH"]
-    cli --> context["alea context<br/>--run-directory PATH"]
+    cli --> init["aflow init [name]<br/>--template project|feature"]
+    cli --> analyze["aflow analyze<br/>--gate domain|infra|presentation"]
+    cli --> match["aflow match<br/>color #HEX | typography | layout"]
+    cli --> scaffold["aflow scaffold &lt;name&gt;<br/>--layer X --style Y"]
+    cli --> inventory["aflow inventory<br/>--output JSON"]
+    cli --> journal["aflow journal<br/>--run-directory PATH"]
+    cli --> context["aflow context<br/>--run-directory PATH"]
 
     init --> bootstrap[Project / feature skeleton<br/>.alea.yaml + layer dirs<br/>+ theme stub]
 
@@ -404,9 +404,9 @@ flowchart TB
     s3[3 — Configurar layers<br/>domain / infra / presentation]
     s4[4 — Elegir adapters<br/>ticket_source · design_source · code_gen]
     s5[5 — Definir thresholds<br/>coverage por capa]
-    s6[6 — Smoke test<br/>alea analyze --gate domain]
+    s6[6 — Smoke test<br/>aflow analyze --gate domain]
     s7{¿pasa?}
-    s8[7 — Probar /pipeline<br/>con un ticket pequeño]
+    s8[7 — Probar /aflow-pipeline<br/>con un ticket pequeño]
     s9[Iterar config hasta<br/>tener parity con tu flujo]
     fix[Ajustar paths / forbid_imports]
 
@@ -474,7 +474,7 @@ Si vas a contribuir código: lee todo, incluyendo cada README por subdirectorio.
 | 3 | [../ARCHITECTURE.md](../ARCHITECTURE.md) | Patrones aplicados, contratos, extension points | 20 min |
 | 4 | [CONSUMER_INTEGRATION.md](CONSUMER_INTEGRATION.md) | Cómo adoptar ALEA en un proyecto real | 30 min |
 | 5 | [adr/0001-architectural-invariants.md](adr/0001-architectural-invariants.md) | Las reglas duras que CI enforcea | 10 min |
-| 6 | [../core/commands/pipeline.md](../core/commands/pipeline.md) | El orquestador maestro | 20 min |
+| 6 | [../core/commands/aflow-pipeline.md](../core/commands/aflow-pipeline.md) | El orquestador maestro | 20 min |
 | 7 | [../lib/src/contracts/](../lib/src/contracts/) (todos los `.dart`) | La superficie API estable | 15 min |
 | 8 | [adr/0002](adr/0002-run-journal.md) → [adr/0011](adr/0011-monorepo-and-bootstrap-strategy.md) | Las 10 decisiones siguientes en orden | 1.5 h |
 | 9 | [../adapters/README.md](../adapters/README.md) + un adapter completo (ej. [../adapters/code_gen/riverpod_manual/README.md](../adapters/code_gen/riverpod_manual/README.md)) | Cómo se ve un adapter concreto | 30 min |

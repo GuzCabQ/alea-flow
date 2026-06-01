@@ -74,6 +74,7 @@ void main() {
       expect(config.testing.fakesPath, 'test/fakes/');
       expect(config.testing.overrideTarget, 'repository');
       expect(config.testing.preferFakesOverMocks, true);
+      expect(config.testing.missingTestSeverity, 'major');
     });
 
     test('coverage thresholds', () {
@@ -133,6 +134,71 @@ void main() {
     });
   });
 
+  group('graph config parsing', () {
+    test('parses graph.exclude and graph.roles; defaults when absent', () {
+      const yaml = '''
+config_version: "1"
+project: { package_name: demo }
+architecture:
+  layers:
+    presentation: { paths: [lib/src/presentation/] }
+state_management: { style: riverpod }
+routing: { package: go_router, router_path: lib/router.dart }
+theme: { path: lib/theme/ }
+testing: { framework: flutter_test, fakes_path: test/fakes/ }
+coverage: { thresholds: { presentation: 80 } }
+ticket_source: { adapter: markdown }
+design_source: { default: none }
+mr: { policy: pr, branch_pattern: "feat/{id}", pre_push: [] }
+pipeline:
+  default_mode: standard
+  modes_available: [standard]
+  cost_warn_usd: 1
+  cost_hard_stop_usd: 5
+  unreliable_threshold: { runs_window: 10, bad_runs_required: 3, manual_corrections_per_run: 5 }
+gates: { per_layer: {} }
+graph:
+  exclude: ["lib/legacy/**"]
+  roles: { MyBase: custom.role }
+''';
+      final c = parseProjectConfigYaml(yaml);
+      expect(c.graph.exclude, contains('lib/legacy/**'));
+      expect(
+        c.graph.exclude,
+        contains('**/*.g.dart'),
+      ); // default still merged in
+      expect(c.graph.roleOverrides['MyBase'], 'custom.role');
+    });
+
+    test('graph section absent → sensible defaults', () {
+      const yaml = '''
+config_version: "1"
+project: { package_name: demo }
+architecture:
+  layers:
+    presentation: { paths: [lib/src/presentation/] }
+state_management: { style: riverpod }
+routing: { package: go_router, router_path: lib/router.dart }
+theme: { path: lib/theme/ }
+testing: { framework: flutter_test, fakes_path: test/fakes/ }
+coverage: { thresholds: { presentation: 80 } }
+ticket_source: { adapter: markdown }
+design_source: { default: none }
+mr: { policy: pr, branch_pattern: "feat/{id}", pre_push: [] }
+pipeline:
+  default_mode: standard
+  modes_available: [standard]
+  cost_warn_usd: 1
+  cost_hard_stop_usd: 5
+  unreliable_threshold: { runs_window: 10, bad_runs_required: 3, manual_corrections_per_run: 5 }
+gates: { per_layer: {} }
+''';
+      final c = parseProjectConfigYaml(yaml);
+      expect(c.graph.exclude, contains('**/*.g.dart'));
+      expect(c.graph.roleOverrides, isEmpty);
+    });
+  });
+
   group('loadProjectConfig — error handling', () {
     test('throws when YAML top-level is not a map', () {
       expect(
@@ -170,6 +236,52 @@ gates: {}
         () => parseProjectConfigYaml(yaml),
         throwsA(isA<ProjectConfigException>()),
       );
+    });
+  });
+
+  group('graph section (slice-2 WS-A)', () {
+    const baseYaml = '''
+config_version: "1"
+project: { package_name: demo }
+architecture:
+  layers:
+    presentation: { paths: [lib/src/presentation/] }
+state_management: { style: riverpod }
+routing: { package: go_router, router_path: lib/router.dart }
+theme: { path: lib/theme/ }
+testing: { framework: flutter_test, fakes_path: test/fakes/ }
+coverage: { thresholds: { presentation: 80 } }
+ticket_source: { adapter: markdown }
+design_source: { default: none, adapters: {} }
+mr: { policy: pr, branch_pattern: "feat/{id}", pre_push: [] }
+pipeline:
+  default_mode: standard
+  modes_available: [standard]
+  cost_warn_usd: 1
+  cost_hard_stop_usd: 5
+  unreliable_threshold: { runs_window: 10, bad_runs_required: 3, manual_corrections_per_run: 5 }
+gates: { per_layer: {} }
+''';
+
+    test('parses graph.exclude (merged onto defaults) and graph.roles', () {
+      final c = parseProjectConfigYaml('''
+$baseYaml
+graph:
+  exclude: ["lib/legacy/**"]
+  roles: { MyBase: custom.role }
+''');
+      expect(c.graph.exclude, contains('lib/legacy/**'));
+      expect(
+        c.graph.exclude,
+        contains('**/*.g.dart'),
+      ); // default still merged in
+      expect(c.graph.roleOverrides['MyBase'], 'custom.role');
+    });
+
+    test('graph section absent → sensible defaults', () {
+      final c = parseProjectConfigYaml(baseYaml);
+      expect(c.graph.exclude, contains('**/*.g.dart'));
+      expect(c.graph.roleOverrides, isEmpty);
     });
   });
 }

@@ -104,12 +104,134 @@ void main() {
       expect(d.nextAction!.produces, contains('domain_impl.md'));
     });
 
-    test('first-layer impl present → slice done', () {
+    test('first-layer impl present → advance to next layer (not done yet)', () {
       writeArtifact('analysis.json', '{"type":"feature"}');
       writeArtifact('spec.json', '{"approved":true}');
       writeArtifact('domain_impl.md', '## files_changed\n');
       final d = decide();
+      // config has domain + presentation; domain done → must advance to presentation
+      expect(d.status, DriverStatus.advance);
+      expect(d.nextAction!.command, contains('implement-presentation'));
+      expect(d.completedPhase, 'implement-domain');
+    });
+
+    test('all layers impl present → done', () {
+      writeArtifact('analysis.json', '{"type":"feature"}');
+      writeArtifact('spec.json', '{"approved":true}');
+      writeArtifact('domain_impl.md', '## files_changed\n');
+      writeArtifact('presentation_impl.md', '## files_changed\n');
+      final d = decide();
       expect(d.status, DriverStatus.done);
+      expect(d.reason, contains('all layers implemented'));
+    });
+  });
+
+  group('decideRun — multi-layer feature (3 layers)', () {
+    late Directory tmp;
+    late String runDir;
+
+    ProjectConfig config3Layers() => ProjectConfig(
+      configVersion: '1.0.0',
+      project: const ProjectInfo(
+        packageName: 'demo',
+        pubspecPath: 'pubspec.yaml',
+      ),
+      architecture: const ArchitectureConfig(
+        layers: {
+          'domain': LayerConfig(paths: ['lib/src/domain/']),
+          'infrastructure': LayerConfig(
+            paths: ['lib/src/infrastructure/'],
+            mayImport: ['domain'],
+          ),
+          'presentation': LayerConfig(
+            paths: ['lib/src/presentation/'],
+            mayImport: ['domain', 'infrastructure'],
+          ),
+        },
+      ),
+      stateManagement: const StateManagementConfig(style: 'riverpod_manual'),
+      routing: const RoutingConfig(
+        package: 'go_router',
+        routerPath: 'lib/src/app/router.dart',
+      ),
+      theme: const ThemeConfig(path: 'lib/src/theme/'),
+      testing: const TestingConfig(
+        framework: 'flutter_test',
+        fakesPath: 'test/fakes/',
+      ),
+      coverage: const CoverageConfig(thresholds: {'domain': 80}),
+      ticketSource: const TicketSourceConfig(adapter: 'file'),
+      designSource: const DesignSourceConfig(defaultAdapter: 'figma'),
+      mr: const MrConfig(
+        policy: 'single-commit-amend',
+        branchPattern: 'feature/{ticket_id}-{slug}',
+        prePush: [],
+      ),
+      pipeline: const PipelineOpsConfig(
+        defaultMode: 'guided',
+        modesAvailable: ['guided', 'semi', 'auto'],
+        costWarnUsd: 3,
+        costHardStopUsd: 5,
+        unreliableThreshold: UnreliableThresholdConfig(
+          runsWindow: 5,
+          badRunsRequired: 3,
+          manualCorrectionsPerRun: 5,
+        ),
+      ),
+      gates: const GatesConfig(perLayer: {}),
+      analyzers: const AnalyzersConfig(),
+    );
+
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('alea_drv3_');
+      runDir = p.join(tmp.path, '.pipeline/runs/DEV-1');
+      Directory(runDir).createSync(recursive: true);
+    });
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    void writeArtifact(String name, String json) =>
+        File(p.join(runDir, name)).writeAsStringSync(json);
+
+    RunDecision decide3({String mode = 'auto'}) => decideRun(
+      ticketId: 'DEV-1',
+      runDir: runDir,
+      config: config3Layers(),
+      projectRoot: tmp.path,
+      schemasDir: 'contracts/schemas',
+      requestedMode: mode,
+      runGates: false,
+    );
+
+    test('advances to infrastructure after domain impl exists', () {
+      writeArtifact('analysis.json', '{"type":"feature"}');
+      writeArtifact('spec.json', '{"approved":true}');
+      writeArtifact('domain_impl.md', '## files_changed\n');
+      final d = decide3();
+      expect(d.status, DriverStatus.advance);
+      expect(d.nextAction!.command, '/implement-infrastructure DEV-1');
+      expect(d.completedPhase, 'implement-domain');
+    });
+
+    test('advances to presentation after domain+infrastructure impl exist', () {
+      writeArtifact('analysis.json', '{"type":"feature"}');
+      writeArtifact('spec.json', '{"approved":true}');
+      writeArtifact('domain_impl.md', '## files_changed\n');
+      writeArtifact('infrastructure_impl.md', '## files_changed\n');
+      final d = decide3();
+      expect(d.status, DriverStatus.advance);
+      expect(d.nextAction!.command, '/implement-presentation DEV-1');
+      expect(d.completedPhase, 'implement-infrastructure');
+    });
+
+    test('done only after ALL layers implemented', () {
+      writeArtifact('analysis.json', '{"type":"feature"}');
+      writeArtifact('spec.json', '{"approved":true}');
+      writeArtifact('domain_impl.md', '## files_changed\n');
+      writeArtifact('infrastructure_impl.md', '## files_changed\n');
+      writeArtifact('presentation_impl.md', '## files_changed\n');
+      final d = decide3();
+      expect(d.status, DriverStatus.done);
+      expect(d.reason, contains('all layers implemented'));
     });
   });
 
@@ -219,6 +341,60 @@ void main() {
     });
   });
 
+  group('decideRun — bugfix', () {
+    late Directory tmp;
+    late String runDir;
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('alea_drvbf_');
+      runDir = p.join(tmp.path, '.pipeline/runs/DEV-1');
+      Directory(runDir).createSync(recursive: true);
+    });
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    void writeArtifact(String name, String content) =>
+        File(p.join(runDir, name)).writeAsStringSync(content);
+
+    RunDecision decide({String mode = 'auto'}) => decideRun(
+      ticketId: 'DEV-1',
+      runDir: runDir,
+      config: _config(),
+      projectRoot: tmp.path,
+      schemasDir: 'contracts/schemas',
+      requestedMode: mode,
+      runGates: false,
+    );
+
+    test('guided: bugfix without approval awaits human (Gate-0)', () {
+      writeArtifact('analysis.json', _validBugfixAnalysis());
+      final d = decide(mode: 'guided');
+      expect(d.status, DriverStatus.awaitingHuman);
+      expect(d.reason, contains('analysis.json::approved'));
+    });
+
+    test('approved bugfix advances to implement-bugfix', () {
+      writeArtifact('analysis.json', _validBugfixAnalysis(approved: true));
+      final d = decide(mode: 'guided');
+      expect(d.status, DriverStatus.advance);
+      expect(d.nextAction!.command, '/implement-bugfix DEV-1');
+      expect(d.nextAction!.produces, contains('implementation.md'));
+    });
+
+    test('bugfix with implementation.md is done', () {
+      writeArtifact('analysis.json', _validBugfixAnalysis(approved: true));
+      writeArtifact('implementation.md', '## files_changed\n');
+      final d = decide(mode: 'auto');
+      expect(d.status, DriverStatus.done);
+      expect(d.reason, contains('bugfix implemented'));
+    });
+
+    test('auto: bugfix without approval skips Gate-0 and advances', () {
+      writeArtifact('analysis.json', _validBugfixAnalysis());
+      final d = decide(mode: 'auto');
+      expect(d.status, DriverStatus.advance);
+      expect(d.nextAction!.command, '/implement-bugfix DEV-1');
+    });
+  });
+
   group('decideRun — hard gate on unparseable schema blocks (regression)', () {
     test(
       'a hard gate whose schema cannot be parsed BLOCKS (not advisory-pass)',
@@ -255,3 +431,10 @@ String _validAnalysis() => '''
 {"ticket_id":"DEV-1","type":"feature","title":"t","description":"d desc long",
  "success_criteria":["c1"],"created_at":"2026-05-28T10:00:00Z",
  "feature_description":"f","new_components":{"entities":["E"]}}''';
+
+String _validBugfixAnalysis({bool? approved}) {
+  final approvedField = approved == null ? '' : ',"approved":$approved';
+  return '{"ticket_id":"DEV-1","type":"bugfix","title":"t",'
+      '"description":"d desc long","success_criteria":["c1"],'
+      '"created_at":"2026-05-28T10:00:00Z"$approvedField}';
+}

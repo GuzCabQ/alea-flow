@@ -123,9 +123,13 @@ class _PatternsVisitor extends RecursiveAstVisitor<void> {
 }
 
 class _AsyncContextChecker extends RecursiveAstVisitor<void> {
-  int _firstAwaitOffset = -1;
+  // End offset of the first `await` expression. The function only suspends
+  // AFTER the awaited expression is fully evaluated, so `context` used WITHIN
+  // it (e.g. as an argument: `await showDialog(context: context)`) is read
+  // before the gap and is safe. Only `context` past this point is "after await".
+  int _firstAwaitEnd = -1;
   int _contextAfterAwaitOffset = -1;
-  bool _hasMountedCheck = false;
+  int _mountedOffset = -1; // offset of the first `mounted` reference, or -1
 
   @override
   void visitFunctionExpression(FunctionExpression node) {
@@ -134,7 +138,7 @@ class _AsyncContextChecker extends RecursiveAstVisitor<void> {
 
   @override
   void visitAwaitExpression(AwaitExpression node) {
-    if (_firstAwaitOffset == -1) _firstAwaitOffset = node.offset;
+    if (_firstAwaitEnd == -1) _firstAwaitEnd = node.end;
     super.visitAwaitExpression(node);
   }
 
@@ -142,10 +146,20 @@ class _AsyncContextChecker extends RecursiveAstVisitor<void> {
   void visitSimpleIdentifier(SimpleIdentifier node) {
     switch (node.name) {
       case 'mounted':
-        _hasMountedCheck = true;
+        if (_mountedOffset == -1) _mountedOffset = node.offset;
       case 'context':
-        if (_firstAwaitOffset != -1 &&
-            node.offset > _firstAwaitOffset &&
+        // `context.mounted` is a mounted-guard expression, not a context use.
+        // Detect it by checking whether this `context` is the prefix of a
+        // PrefixedIdentifier whose identifier is `mounted`.
+        final parent = node.parent;
+        if (parent is PrefixedIdentifier &&
+            parent.identifier.name == 'mounted') {
+          // Record this as a mounted check at the `context` offset.
+          if (_mountedOffset == -1) _mountedOffset = node.offset;
+          break;
+        }
+        if (_firstAwaitEnd != -1 &&
+            node.offset >= _firstAwaitEnd &&
             _contextAfterAwaitOffset == -1) {
           _contextAfterAwaitOffset = node.offset;
         }
@@ -153,8 +167,9 @@ class _AsyncContextChecker extends RecursiveAstVisitor<void> {
   }
 
   bool get hasViolation =>
-      _firstAwaitOffset != -1 &&
+      _firstAwaitEnd != -1 &&
       _contextAfterAwaitOffset != -1 &&
-      !_hasMountedCheck;
+      // guarded only if a mounted check appears at-or-before the post-await use
+      !(_mountedOffset != -1 && _mountedOffset <= _contextAfterAwaitOffset);
   int get violationOffset => _contextAfterAwaitOffset;
 }

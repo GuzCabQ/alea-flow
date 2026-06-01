@@ -15,7 +15,7 @@
 // shared call-extraction helper.
 //
 // Rule severity choices:
-//   - missing_image_fit:          critical (layout unpredictable, but not a runtime crash)
+//   - missing_image_fit:          major/advisory (layout/fidelity concern, not a runtime crash)
 //   - emoji_as_icon:              critical when NDS source=figma, major otherwise
 //   - button_without_content:     blocker (broken UX)
 //   - asset_path_broken:          critical (runtime crash when path doesn't exist)
@@ -523,7 +523,10 @@ class _MissingImageFitVisitor extends _RuleVisitor {
         suggestedFix:
             'Add `fit: BoxFit.contain` for icons/illustrations, or '
             '`fit: BoxFit.cover` for backgrounds.',
-        severity: Severity.critical,
+        // Advisory: a missing `fit:` is a layout/fidelity concern, not a
+        // runtime crash or broken UX. Consumers running a strict visual gate
+        // can promote it via `analyzers.severity_overrides.visual_fidelity`.
+        severity: Severity.major,
       ),
     );
   }
@@ -615,6 +618,11 @@ class _ButtonWithoutContentVisitor extends _RuleVisitor {
   @override
   void onCall(_Call call) {
     if (!_buttonTypes.contains(call.type)) return;
+    // `ElevatedButton.styleFrom(...)` (and the other buttons' `.styleFrom`) is
+    // a static ButtonStyle factory, NOT a button — it is passed to a button's
+    // `style:`. Its style-only args carry no content widget, so treating it as
+    // a button produces a false `button_without_content` blocker.
+    if (call.method == 'styleFrom') return;
     // Named constructors like ElevatedButton.icon(...) almost always include
     // an `icon:` Icon — but we still scan the subtree for a content widget.
     if (!_hasVisibleContent(call.args)) {

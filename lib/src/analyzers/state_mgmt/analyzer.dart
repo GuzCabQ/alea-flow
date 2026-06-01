@@ -117,6 +117,12 @@ class _StateMgmtVisitor extends RecursiveAstVisitor<void> {
     if (!_inBuildMethod || _closureDepthInBuild > 0) return;
     if (node.target != null) return;
     if (!node.methodName.name.endsWith('Provider')) return;
+    final calleeName = node.methodName.name;
+    // Provider constructors are PascalCase types; a lowercase-initial name is a
+    // local helper method (e.g. buildLoginProvider) — not a provider creation.
+    if (calleeName.isEmpty || calleeName[0].toLowerCase() == calleeName[0]) {
+      return;
+    }
     final line = lineInfo.getLocation(node.offset).lineNumber;
     issues.add(
       AnalysisIssue(

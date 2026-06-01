@@ -8,7 +8,7 @@ Ported from `flutter-ui/SKILL.md` Agent 5 critical-fail checks. Each rule here i
 
 | Rule id | Severity | Active | What it checks |
 |---|---|---|---|
-| `visual_fidelity/missing_image_fit` | `critical` | ✅ | `Image.asset/network/file/memory`, `SvgPicture.asset/network/string`, `Lottie.asset/network/memory/file` calls without a `fit:` named argument. |
+| `visual_fidelity/missing_image_fit` | `major` (advisory) | ✅ | `Image.asset/network/file/memory`, `SvgPicture.asset/network/string`, `Lottie.asset/network/memory/file` calls without a `fit:` named argument. |
 | `visual_fidelity/emoji_as_icon` | `critical` (when NDS source = figma) / `major` (otherwise) | ✅ | `Text("...")` whose string is composed entirely of Unicode emoji code points (length ≤ 4 chars). |
 | `visual_fidelity/button_without_content` | `blocker` | ✅ | `ElevatedButton`/`TextButton`/`OutlinedButton`/`FilledButton`/`CupertinoButton` whose subtree contains no `Text`, `Image`, `Icon`, `SvgPicture`, `Lottie`, `RichText`, or `SelectableText`. `IconButton` is exempt (always has `icon:` by definition). |
 | `visual_fidelity/asset_path_broken` | `critical` | ✅ | `Image.asset("p")` / `SvgPicture.asset("p")` / `Lottie.asset("p")` where `<projectRoot>/<p>` does not exist on disk AND no `// TODO: ... asset/missing/unknown` comment precedes the call within the prior ~3 lines. `packages/...` paths are skipped (those resolve against the imported package). |
@@ -29,8 +29,8 @@ The two stubs are intentional placeholders: the rules are documented and the ana
 Three tiers reflect "what fails when this slips into production":
 
 - **`blocker`** — broken UX or undefined widget behavior. `button_without_content` produces a button with empty press target; nothing visible to the user.
-- **`critical`** — runtime exceptions or layout instability. `asset_path_broken` crashes when the widget builds. `missing_image_fit` causes unbounded constraint errors in some contexts. `emoji_as_icon` (figma) means the design's icon was lost — the bug is silent until QA notices, but the design intent is gone.
-- **`major`** — likely a bug, less certain. `emoji_as_icon` outside a figma run gets this severity because the emoji might be intentional in non-design-driven flows.
+- **`critical`** — runtime exceptions or layout instability. `asset_path_broken` crashes when the widget builds. `emoji_as_icon` (figma) means the design's icon was lost — the bug is silent until QA notices, but the design intent is gone.
+- **`major`** — likely a bug or a fidelity deviation, less certain / non-blocking. `missing_image_fit` is a layout/fidelity concern (the image still renders), so it advises rather than blocks. `emoji_as_icon` outside a figma run gets this severity because the emoji might be intentional in non-design-driven flows.
 
 Consumers can demote any rule via `.alea.yaml::analyzers.severity_overrides.visual_fidelity: <severity>` — applied by the runner, not by this analyzer.
 

@@ -6,7 +6,7 @@ description: >
   State-manager agnostic (Riverpod / Bloc / GetX / Provider …),
   ticket-source agnostic (Asana / Jira / Linear / file …), design-source
   agnostic (Figma / image / markup …).
-version: 0.1.0
+version: 0.1.1
 # TODO before first pub.dev publish:
 #   1. Replace GuzCabQ below with your real handle.
 #   2. Remove `publish_to: none` (it currently blocks `dart pub publish`).
@@ -31,6 +31,7 @@ dependencies:
   analyzer: ^12.0.0
   args: ^2.7.0
   crypto: ^3.0.7
+  dart_source_graph: ^0.1.0
   path: ^1.9.1
   yaml: ^3.1.3
 

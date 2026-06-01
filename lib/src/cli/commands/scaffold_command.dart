@@ -1,4 +1,4 @@
-// ALEA — `alea scaffold <feature>` subcommand.
+// ALEA — `aflow scaffold <feature>` subcommand.
 //
 // Generates a feature scaffold via the appropriate `CodeGenAdapter`.
 // Adapter selection: explicit `--style <name>` wins; otherwise the value
@@ -61,7 +61,7 @@ class ScaffoldCommand extends Command<int> {
       'Generate a feature scaffold via the configured code-gen adapter.';
 
   @override
-  String get invocation => 'alea scaffold <feature_name>';
+  String get invocation => 'aflow scaffold <feature_name>';
 
   @override
   Future<int> run() async {
@@ -95,6 +95,14 @@ class ScaffoldCommand extends Command<int> {
     final layer = CodeGenLayer.values.firstWhere(
       (l) => l.name == (res['layer'] as String),
     );
+
+    if (!adapter.supports(layer, config)) {
+      stderr.writeln(
+        'Style "$styleName" does not support layer "${layer.name}". '
+        'Nothing to scaffold.',
+      );
+      return 2;
+    }
 
     final request = CodeGenRequest(
       layer: layer,

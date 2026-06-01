@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>alea · quality gate</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#results">Skip to findings</a>
+
+<header class="app-header" id="appHeader">
+  <div class="shell">
+
+    <div class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2.5 21 7v10l-9 4.5L3 17V7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 14.5 12 7l4 7.5M9.3 12.2h5.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="brand-text"><b>alea</b><span>quality&nbsp;gate</span></span>
+      </div>
+      <div class="run-meta" id="runMeta"></div>
+    </div>
+
+    <div class="verdict" id="verdict" role="status"></div>
+
+    <div class="tallies" id="tallies" aria-label="Finding totals by severity"></div>
+
+    <div class="controls">
+      <div class="seg" role="radiogroup" aria-label="Group findings by">
+        <button class="seg-btn" role="radio" aria-checked="true" data-group="severity">Severity</button>
+        <button class="seg-btn" role="radio" aria-checked="false" data-group="file">File</button>
+        <button class="seg-btn" role="radio" aria-checked="false" data-group="analyzer">Analyzer</button>
+      </div>
+
+      <div class="filters" role="group" aria-label="Filter by severity">
+        <label class="fchip" data-sev="blocker"><input type="checkbox" checked><span class="fchip-body"></span></label>
+        <label class="fchip" data-sev="critical"><input type="checkbox" checked><span class="fchip-body"></span></label>
+        <label class="fchip" data-sev="major"><input type="checkbox"><span class="fchip-body"></span></label>
+        <label class="fchip" data-sev="minor"><input type="checkbox"><span class="fchip-body"></span></label>
+      </div>
+
+      <div class="search">
+        <svg class="search-ico" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Filter by path, rule, or message…" aria-label="Search findings">
+        <button id="searchClear" class="search-clear" type="button" aria-label="Clear search" hidden>&times;</button>
+      </div>
+    </div>
+
+    <div class="subbar">
+      <span class="counter" id="counter" aria-live="polite"></span>
+      <span class="legend"><b>blocker</b> / <b>critical</b> fail the gate · <b>major</b> / <b>minor</b> are advisory</span>
+    </div>
+
+  </div>
+</header>
+
+<main id="results" aria-label="Findings"></main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+/* Inline report data — read directly (file:// blocks fetch). report.json is emitted separately for tooling. */
+window.__ALEA_REPORT__ = __ALEA_DATA__;
+</script>
+<script src="app.js"></script>
+</body>
+</html>

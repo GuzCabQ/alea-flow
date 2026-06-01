@@ -1,4 +1,4 @@
-// ALEA — `alea journal` subcommand.
+// ALEA — `aflow journal` subcommand.
 //
 // Reads the JSONL journal produced by analyzers and orchestrators in a
 // given run directory and prints a human-readable summary (counts per
@@ -52,8 +52,15 @@ class JournalCommand extends Command<int> {
     }
 
     final journal = JsonlRunJournal.forRunDirectory(runDir);
-    final events = await journal.readAll().toList();
-    await journal.close();
+    final List<JournalEvent> events;
+    try {
+      events = await journal.readAll().toList();
+    } on FormatException catch (e) {
+      stderr.writeln('Error: malformed journal at $journalPath: $e');
+      return 2;
+    } finally {
+      await journal.close();
+    }
 
     if (format == 'jsonl') {
       for (final e in events) {

@@ -14,19 +14,30 @@
 import 'package:args/command_runner.dart';
 
 import 'commands/analyze_command.dart';
+import 'commands/check_files_changed_command.dart';
+import 'commands/commands_path_command.dart';
 import 'commands/context_command.dart';
+import 'commands/graph_command.dart';
+import 'commands/graph_query_command.dart';
 import 'commands/init_command.dart';
+import 'commands/install_commands_command.dart';
 import 'commands/inventory_command.dart';
 import 'commands/journal_command.dart';
 import 'commands/match_command.dart';
+import 'commands/metrics_command.dart';
+import 'commands/redact_command.dart';
+import 'commands/run_command.dart';
 import 'commands/scaffold_command.dart';
+import 'commands/validate_artifact_command.dart';
 
 class AleaCliRunner extends CommandRunner<int> {
   AleaCliRunner()
     : super(
         'aflow',
         'Flutter pipeline CLI from the ALEA suite — '
-            'init, analyze, match, scaffold, inventory, journal, context.',
+            'init, analyze, match, scaffold, inventory, journal, context, '
+            'redact, check-files-changed, validate-artifact, metrics, run, '
+            'graph, graph-query, commands-path.',
       ) {
     _wire();
   }
@@ -39,6 +50,15 @@ class AleaCliRunner extends CommandRunner<int> {
     addCommand(InventoryCommand());
     addCommand(JournalCommand());
     addCommand(ContextCommand());
+    addCommand(RedactCommand());
+    addCommand(CheckFilesChangedCommand());
+    addCommand(ValidateArtifactCommand());
+    addCommand(MetricsCommand());
+    addCommand(RunCommand());
+    addCommand(GraphCommand());
+    addCommand(GraphQueryCommand());
+    addCommand(CommandsPathCommand());
+    addCommand(InstallCommandsCommand());
   }
 
   /// Execute [args] and return the process exit code without ever calling

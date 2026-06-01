@@ -22,6 +22,11 @@ class DryDetectionAnalyzer extends Analyzer {
 
   @override
   Future<List<AnalysisIssue>> doAnalyze(AnalyzerContext ctx) async {
+    final opts = ctx.config.analyzers.optionsFor(name);
+    final minOccurrences =
+        (opts['min_occurrences'] as num?)?.toInt() ?? this.minOccurrences;
+    final minLength = (opts['min_length'] as num?)?.toInt() ?? this.minLength;
+
     final issues = <AnalysisIssue>[];
     final normalizedPaths = ctx.filePaths.map(p.normalize).toList();
     if (normalizedPaths.isEmpty) return issues;

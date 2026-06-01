@@ -43,5 +43,18 @@ void main() {
       ]);
       expect(code, 2);
     });
+
+    test('non-integer --window exits 64 with a clear message', () async {
+      final hist = File(p.join(tmp.path, 'history.jsonl'))
+        ..writeAsStringSync('');
+      final code = await AleaCliRunner().run([
+        'metrics',
+        '--history',
+        hist.path,
+        '--window',
+        'abc',
+      ]);
+      expect(code, 64);
+    });
   });
 }

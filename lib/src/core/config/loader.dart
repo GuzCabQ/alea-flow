@@ -57,6 +57,35 @@ ProjectConfig _parseRoot(YamlMap y) {
     gates: _parseGates(_requireMap(y, 'gates')),
     analyzers: _parseAnalyzers(y['analyzers']),
     docs: _parseStringMap(y['docs']),
+    graph: _parseGraph(y['graph']),
+  );
+}
+
+/// Parse the optional `graph:` section. User-supplied `exclude` globs are
+/// MERGED onto the defaults (deduped, defaults first) so generated code never
+/// becomes visible just because the consumer added one exclude.
+GraphConfig _parseGraph(Object? raw) {
+  const defaults = GraphConfig();
+  if (raw == null) return defaults;
+  if (raw is! YamlMap) {
+    throw const ProjectConfigException('graph must be a map', field: 'graph');
+  }
+  final merged = <String>[...defaults.exclude];
+  if (raw['exclude'] != null) {
+    for (final g in _stringList(raw, 'exclude')) {
+      if (!merged.contains(g)) merged.add(g);
+    }
+  }
+  final rolesRaw = raw['roles'];
+  final roles = <String, String>{};
+  if (rolesRaw is YamlMap) {
+    for (final e in rolesRaw.entries) {
+      roles[e.key.toString()] = e.value.toString();
+    }
+  }
+  return GraphConfig(
+    exclude: List.unmodifiable(merged),
+    roleOverrides: Map.unmodifiable(roles),
   );
 }
 
@@ -218,6 +247,7 @@ TestingConfig _parseTesting(YamlMap y) => TestingConfig(
   overrideTarget: _stringOr(y, 'override_target', 'repository'),
   preferFakesOverMocks: _boolOr(y, 'prefer_fakes_over_mocks', true),
   fakeClassPattern: _stringOr(y, 'fake_class_pattern', 'Fake{Name}Repository'),
+  missingTestSeverity: _stringOr(y, 'missing_test_severity', 'major'),
 );
 
 CoverageConfig _parseCoverage(YamlMap y) {

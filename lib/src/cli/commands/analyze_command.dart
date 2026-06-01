@@ -1,4 +1,4 @@
-// ALEA — `alea analyze` subcommand.
+// ALEA — `aflow analyze` subcommand.
 //
 // Runs the analyzer registry against a consumer's project and writes a
 // gate report (human-readable to stdout by default; JSON when --format=json
@@ -10,12 +10,15 @@ import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
 
 import '../../adapters/token_catalog/factory.dart';
+import '../../contracts/analyzer.dart';
 import '../../contracts/design_token_catalog.dart';
 import '../../contracts/project_config.dart';
 import '../../core/config/loader.dart';
+import '../../core/journal/jsonl_run_journal.dart';
 import '../../core/registry.dart';
 import '../../core/reporter.dart';
 import '../../core/runner.dart';
+import '../report/html_report.dart';
 
 class AnalyzeCommand extends Command<int> {
   AnalyzeCommand() {
@@ -29,9 +32,11 @@ class AnalyzeCommand extends Command<int> {
       ..addOption(
         'format',
         abbr: 'f',
-        allowed: ['human', 'json'],
+        allowed: ['human', 'json', 'html'],
         defaultsTo: 'human',
-        help: 'Output format.',
+        help:
+            'Output format. For `html`, --output-file is the output directory '
+            '(default alea-reports/).',
       )
       ..addOption(
         'gate',
@@ -62,8 +67,9 @@ class AnalyzeCommand extends Command<int> {
         'output-file',
         abbr: 'o',
         help:
-            'Write the JSON gate report to this path. Parent dirs are '
-            'created automatically.',
+            'With --format json: write the JSON report to this file. '
+            'With --format html: the output DIRECTORY (default alea-reports/). '
+            'Parent dirs are created automatically.',
         valueHelp: '.pipeline/runs/DEV-XXXX/gate_report.json',
       );
   }
@@ -116,14 +122,46 @@ class AnalyzeCommand extends Command<int> {
     }
 
     final runner = AnalyzerRunner(registeredAnalyzers());
-    final report = await runner.run(
-      gate: gate,
-      filePaths: filesToAnalyze,
-      projectRoot: projectRoot,
-      runDirectory: runDirectory,
-      config: config,
-      tokenCatalog: catalog,
-    );
+    final journal = runDirectory != null
+        ? JsonlRunJournal.forRunDirectory(runDirectory)
+        : null;
+    final GateReport report;
+    try {
+      report = await runner.run(
+        gate: gate,
+        filePaths: filesToAnalyze,
+        projectRoot: projectRoot,
+        runDirectory: runDirectory,
+        config: config,
+        journal: journal,
+        tokenCatalog: catalog,
+      );
+    } finally {
+      await journal?.close();
+    }
+
+    if (format == 'html') {
+      // Default the HTML report dir under the project root (-r), not the
+      // process CWD: reports belong with the project being analyzed. For the
+      // common `-r .` case this is identical to the old CWD-relative behavior.
+      final dir = outputFile ?? p.join(projectRoot, 'alea-reports');
+      final project = config.project.packageName.isNotEmpty
+          ? config.project.packageName
+          : p.basename(p.canonicalize(projectRoot));
+      final files = renderHtmlReport(report, project: project);
+      try {
+        for (final entry in files.entries) {
+          final f = File(p.join(dir, entry.key))
+            ..parent.createSync(recursive: true);
+          f.writeAsStringSync(entry.value);
+        }
+      } on FileSystemException catch (e) {
+        stderr.writeln('Error writing HTML report to $dir/: ${e.message}');
+        return 2;
+      }
+      stderr.writeln('HTML report written to $dir/ (open $dir/index.html)');
+      return report.passed ? 0 : 1;
+    }
 
     final reporter = GateReporter();
     if (outputFile != null) {
@@ -166,6 +204,10 @@ class AnalyzeCommand extends Command<int> {
         );
       }
     }
-    return out;
+    // Sort + deduplicate so the file list is deterministic across OS/filesystem
+    // iteration orders. The toSet() also guards against the same file appearing
+    // under two overlapping layer paths (matching the dedup in the graph builder).
+    final result = out.toSet().toList()..sort();
+    return result;
   }
 }

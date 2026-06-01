@@ -30,6 +30,7 @@ class ProjectConfig {
   final GatesConfig gates;
   final AnalyzersConfig analyzers;
   final Map<String, String> docs;
+  final GraphConfig graph;
 
   const ProjectConfig({
     required this.configVersion,
@@ -47,16 +48,8 @@ class ProjectConfig {
     required this.gates,
     required this.analyzers,
     this.docs = const {},
+    this.graph = const GraphConfig(),
   });
-
-  /// Parse from raw YAML (already parsed to Map by the caller).
-  /// Throws [ProjectConfigException] when required fields are missing or
-  /// when validation against `project-config.schema.yaml` fails.
-  ///
-  /// Implementation goes in `core/config/loader.dart` (TBD in step 5).
-  static ProjectConfig fromYaml(Map<String, Object?> yaml) {
-    throw UnimplementedError('Implemented in core/config/loader.dart');
-  }
 }
 
 class ProjectInfo {
@@ -248,6 +241,12 @@ class TestingConfig {
   final bool preferFakesOverMocks;
   final String fakeClassPattern;
 
+  /// Severity for the "no test file found" finding, as a [Severity] name
+  /// (`minor` | `major` | `critical` | `blocker`). Defaults to `major` —
+  /// advisory (non-blocking): a missing test is quality debt, not a hard stop.
+  /// Raise to `critical`/`blocker` to make missing tests fail the gate.
+  final String missingTestSeverity;
+
   const TestingConfig({
     required this.framework,
     required this.fakesPath,
@@ -255,6 +254,7 @@ class TestingConfig {
     this.overrideTarget = 'repository',
     this.preferFakesOverMocks = true,
     this.fakeClassPattern = 'Fake{Name}Repository',
+    this.missingTestSeverity = 'major',
   });
 }
 
@@ -366,6 +366,22 @@ class AnalyzersConfig {
   /// Convenience: returns the options bag for [analyzer], never null.
   Map<String, Object?> optionsFor(String analyzer) =>
       options[analyzer] ?? const {};
+}
+
+/// Configuration for the code-knowledge-graph (`aflow graph`).
+///
+/// [exclude] are globs for `.dart` files the graph must NOT collect — the only
+/// sanctioned way to create a blind spot; defaults exclude generated code.
+/// [roleOverrides] map a supertype label to a role tag, extending/overriding the
+/// built-in framework role map.
+class GraphConfig {
+  final List<String> exclude;
+  final Map<String, String> roleOverrides;
+
+  const GraphConfig({
+    this.exclude = const ['**/*.g.dart', '**/*.freezed.dart'],
+    this.roleOverrides = const {},
+  });
 }
 
 class ProjectConfigException implements Exception {

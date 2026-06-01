@@ -84,7 +84,6 @@ RunDecision decideRun({
   String requestedMode = 'guided',
   bool runGates = true,
 }) {
-  final firstLayer = config.architecture.layers.keys.first;
   bool has(String f) => File(p.join(runDir, f)).existsSync();
 
   // Effective mode: the unreliable flag forces guided.
@@ -162,6 +161,65 @@ RunDecision decideRun({
       const GateOutcome(),
     );
   }
+  final ticketType = _readType(p.join(runDir, 'analysis.json'));
+  if (ticketType == 'bugfix') {
+    final aGate = runGates
+        ? _validateArtifactGate(
+            p.join(runDir, 'analysis.json'),
+            'analysis',
+            schemasDir,
+            advisory: false,
+          )
+        : const GateOutcome();
+    if (!aGate.passed) return _blocked(ticketId, 'analyze', aGate, mode);
+
+    if (!has('implementation.md')) {
+      // Gate-0 (bugfix): human checkpoint via analysis.json::approved.
+      final approved = _readApproved(p.join(runDir, 'analysis.json'));
+      final gate0Needed = mode == 'guided' || mode == 'semi';
+      if (gate0Needed && approved != true) {
+        return RunDecision(
+          ticketId: ticketId,
+          completedPhase: 'analyze',
+          status: DriverStatus.awaitingHuman,
+          gate: aGate,
+          nextAction: null,
+          mode: mode,
+          reason:
+              'set analysis.json::approved = true to proceed (Gate-0, bugfix)',
+        );
+      }
+      return advance(
+        'analyze',
+        action(
+          'implement-bugfix',
+          '/implement-bugfix $ticketId',
+          '.pipeline/runs/$ticketId/implementation.md',
+        ),
+        aGate,
+      );
+    }
+    // implementation.md present → changed-files gate → done.
+    final bugGate = runGates
+        ? _changedFilesGate(
+            projectRoot,
+            _readFilesChanged(p.join(runDir, 'implementation.md')),
+          )
+        : const GateOutcome();
+    if (!bugGate.passed) {
+      return _blocked(ticketId, 'implement-bugfix', bugGate, mode);
+    }
+    return RunDecision(
+      ticketId: ticketId,
+      completedPhase: 'implement-bugfix',
+      status: DriverStatus.done,
+      gate: bugGate,
+      nextAction: null,
+      mode: mode,
+      reason: 'bugfix implemented; code-review/MR are future',
+    );
+  }
+  // === feature flow continues below (spec.json …) ===
   if (!has('spec.json')) {
     final gate = runGates
         ? _validateArtifactGate(
@@ -204,64 +262,51 @@ RunDecision decideRun({
         reason: 'set spec.json::approved = true to proceed (Gate-0)',
       );
     }
-    // auto: Gate-0 skipped → advance to implement.
-    return advance(
-      'design',
-      action(
-        'implement-$firstLayer',
-        '/implement-$firstLayer $ticketId',
-        '.pipeline/runs/$ticketId/${firstLayer}_impl.md',
-      ),
-      specGate,
-    );
+    // auto: Gate-0 skipped → fall through to layer loop below.
   }
-  if (!has('${firstLayer}_impl.md')) {
-    return advance(
-      'design',
-      action(
-        'implement-$firstLayer',
-        '/implement-$firstLayer $ticketId',
-        '.pipeline/runs/$ticketId/${firstLayer}_impl.md',
-      ),
-      const GateOutcome(),
-    );
-  }
-  // First-layer implement present.
-  GateOutcome implGate = const GateOutcome();
-  if (runGates) {
-    final declared = _readFilesChanged(p.join(runDir, '${firstLayer}_impl.md'));
-    try {
-      final cf = compareChangedFiles(
-        projectRoot: projectRoot,
-        declared: declared,
-      );
-      implGate = cf.undeclared.isEmpty
-          ? GateOutcome(
-              advisories: cf.stale.map((f) => 'stale declaration: $f').toList(),
-            )
-          : GateOutcome(
-              passed: false,
-              violations: cf.undeclared
-                  .map((f) => 'changed but not declared: $f')
-                  .toList(),
-            );
-    } on ChangedFilesException catch (e) {
-      implGate = GateOutcome(
-        advisories: ['files-changed gate skipped: ${e.message}'],
+  // Feature implementation — iterate layers in config order. The changed-files
+  // gate compares the UNION of all present layers' declared files against the
+  // working tree, so a later layer does not flag an earlier layer's files.
+  final layers = config.architecture.layers.keys.toList();
+  final declaredUnion = <String>{};
+  for (var i = 0; i < layers.length; i++) {
+    final layer = layers[i];
+    if (!has('${layer}_impl.md')) {
+      // Gate the cumulative prior work before advancing (nothing to gate at i==0).
+      final gate = (runGates && i > 0)
+          ? _changedFilesGate(projectRoot, declaredUnion)
+          : const GateOutcome();
+      if (!gate.passed) {
+        return _blocked(ticketId, 'implement-${layers[i - 1]}', gate, mode);
+      }
+      final completed = i == 0 ? 'design' : 'implement-${layers[i - 1]}';
+      return advance(
+        completed,
+        action(
+          'implement-$layer',
+          '/implement-$layer $ticketId',
+          '.pipeline/runs/$ticketId/${layer}_impl.md',
+        ),
+        gate,
       );
     }
+    declaredUnion.addAll(_readFilesChanged(p.join(runDir, '${layer}_impl.md')));
   }
-  if (!implGate.passed) {
-    return _blocked(ticketId, 'implement-$firstLayer', implGate, mode);
+  // All layers implemented → gate the cumulative work, then done.
+  final finalGate = runGates
+      ? _changedFilesGate(projectRoot, declaredUnion)
+      : const GateOutcome();
+  if (!finalGate.passed) {
+    return _blocked(ticketId, 'implement-${layers.last}', finalGate, mode);
   }
   return RunDecision(
     ticketId: ticketId,
-    completedPhase: 'implement-$firstLayer',
+    completedPhase: 'implement-${layers.last}',
     status: DriverStatus.done,
-    gate: implGate,
+    gate: finalGate,
     nextAction: null,
     mode: mode,
-    reason: 'slice complete (review/validate/MR are future)',
+    reason: 'all layers implemented; review/validate/MR are future',
   );
 }
 
@@ -336,11 +381,49 @@ RunDecision _blocked(
   mode: mode,
 );
 
+/// Compares the working tree's changed files against [declared] and turns the
+/// result into a GateOutcome. Undeclared changes block; stale declarations are
+/// advisory; a git failure degrades to advisory (never a false block).
+GateOutcome _changedFilesGate(String projectRoot, Set<String> declared) {
+  try {
+    final cf = compareChangedFiles(
+      projectRoot: projectRoot,
+      declared: declared,
+    );
+    return cf.undeclared.isEmpty
+        ? GateOutcome(
+            advisories: cf.stale.map((f) => 'stale declaration: $f').toList(),
+          )
+        : GateOutcome(
+            passed: false,
+            violations: cf.undeclared
+                .map((f) => 'changed but not declared: $f')
+                .toList(),
+          );
+  } on ChangedFilesException catch (e) {
+    return GateOutcome(
+      advisories: ['files-changed gate skipped: ${e.message}'],
+    );
+  }
+}
+
 bool? _readApproved(String path) {
   try {
     final decoded = jsonDecode(File(path).readAsStringSync());
     if (decoded is Map && decoded['approved'] is bool) {
       return decoded['approved'] as bool;
+    }
+  } on Object {
+    return null;
+  }
+  return null;
+}
+
+String? _readType(String path) {
+  try {
+    final decoded = jsonDecode(File(path).readAsStringSync());
+    if (decoded is Map && decoded['type'] is String) {
+      return decoded['type'] as String;
     }
   } on Object {
     return null;

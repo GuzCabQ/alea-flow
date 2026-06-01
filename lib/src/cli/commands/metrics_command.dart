@@ -69,12 +69,30 @@ class MetricsCommand extends Command<int> {
       return 2;
     }
 
+    int? parseIntFlag(String name) => int.tryParse(res[name] as String);
+    final window = parseIntFlag('window');
+    final manualThreshold = parseIntFlag('manual-threshold');
+    final badRuns = parseIntFlag('bad-runs');
+    final circuitMinRuns = parseIntFlag('circuit-min-runs');
+    final hallucinationPct = parseIntFlag('hallucination-pct');
+    for (final entry in {
+      'window': window,
+      'manual-threshold': manualThreshold,
+      'bad-runs': badRuns,
+      'circuit-min-runs': circuitMinRuns,
+      'hallucination-pct': hallucinationPct,
+    }.entries) {
+      if (entry.value == null) {
+        stderr.writeln('Error: --${entry.key} must be an integer.');
+        return 64; // EX_USAGE
+      }
+    }
     final thresholds = MetricsThresholds(
-      window: int.parse(res['window'] as String),
-      manualThreshold: int.parse(res['manual-threshold'] as String),
-      badRuns: int.parse(res['bad-runs'] as String),
-      circuitMinRuns: int.parse(res['circuit-min-runs'] as String),
-      hallucinationPct: int.parse(res['hallucination-pct'] as String),
+      window: window!,
+      manualThreshold: manualThreshold!,
+      badRuns: badRuns!,
+      circuitMinRuns: circuitMinRuns!,
+      hallucinationPct: hallucinationPct!,
     );
 
     final parsed = parseHistory(file.readAsStringSync());

@@ -11,7 +11,6 @@ library;
 
 // ── Contracts (stable API) ──────────────────────────────────────────────────
 export 'src/contracts/analyzer.dart';
-export 'src/contracts/gate.dart';
 export 'src/contracts/project_config.dart';
 export 'src/contracts/ticket_source_adapter.dart';
 export 'src/contracts/design_source_adapter.dart';
@@ -73,6 +72,7 @@ export 'src/analyzers/design_principles/analyzer.dart';
 export 'src/analyzers/dry_detection/analyzer.dart';
 export 'src/analyzers/flutter_antipatterns/analyzer.dart';
 export 'src/analyzers/layer_integrity/analyzer.dart';
+export 'src/analyzers/meaningful_test/analyzer.dart';
 export 'src/analyzers/package_boundary/analyzer.dart';
 export 'src/analyzers/performance/analyzer.dart';
 export 'src/analyzers/project_conventions/analyzer.dart';

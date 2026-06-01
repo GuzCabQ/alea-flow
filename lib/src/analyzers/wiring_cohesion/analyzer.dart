@@ -34,9 +34,11 @@
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/features.dart';
+import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/file_system/file_system.dart' as analyzer_fs;
 import 'package:path/path.dart' as p;
 
 import '../../contracts/analyzer.dart';
@@ -91,6 +93,9 @@ class WiringCohesionAnalyzer extends Analyzer {
       manifestAbsolute,
       rule.registrationCall,
     );
+    // If the manifest could not be read, skip reporting issues for this rule
+    // rather than treating every candidate as unregistered.
+    if (registered == null) return const [];
 
     await ctx.journal?.record(
       JournalEvent(
@@ -148,11 +153,18 @@ class WiringCohesionAnalyzer extends Analyzer {
         if (entity is! File) continue;
         if (!entity.path.endsWith('.dart')) continue;
         if (p.equals(entity.path, excludePath)) continue;
-        final parsed = parseFile(
-          path: entity.path,
-          featureSet: FeatureSet.latestLanguageVersion(),
-          throwIfDiagnostics: false,
-        );
+        final ParseStringResult parsed;
+        try {
+          parsed = parseFile(
+            path: entity.path,
+            featureSet: FeatureSet.latestLanguageVersion(),
+            throwIfDiagnostics: false,
+          );
+        } on FileSystemException {
+          continue; // unreadable file — skip, like every other analyzer
+        } on analyzer_fs.FileSystemException {
+          continue;
+        }
         for (final decl in parsed.unit.declarations) {
           if (decl is! ClassDeclaration) continue;
           final className = decl.namePart.typeName.lexeme;
@@ -190,12 +202,19 @@ class WiringCohesionAnalyzer extends Analyzer {
 
   // ── Registration discovery ──────────────────────────────────────────────
 
-  Set<String> _findRegisteredClasses(String manifestAbsolute, String call) {
-    final parsed = parseFile(
-      path: manifestAbsolute,
-      featureSet: FeatureSet.latestLanguageVersion(),
-      throwIfDiagnostics: false,
-    );
+  Set<String>? _findRegisteredClasses(String manifestAbsolute, String call) {
+    final ParseStringResult parsed;
+    try {
+      parsed = parseFile(
+        path: manifestAbsolute,
+        featureSet: FeatureSet.latestLanguageVersion(),
+        throwIfDiagnostics: false,
+      );
+    } on FileSystemException {
+      return null;
+    } on analyzer_fs.FileSystemException {
+      return null;
+    }
     final visitor = _RegistrationCollector(call);
     parsed.unit.accept(visitor);
     return visitor.registered;

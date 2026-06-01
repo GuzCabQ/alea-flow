@@ -1,7 +1,7 @@
-// ALEA — `alea init` subcommand.
+// ALEA — `aflow init` subcommand.
 //
-// Bootstraps an ALEA-ready project skeleton in a target directory. Two
-// templates are shipped:
+// Bootstraps an ALEA-ready project skeleton OR an `.alea.yaml` from an
+// existing project. Three templates are shipped:
 //
 //   --template project   Adds the ALEA layer to a Flutter app (post
 //                        `flutter create`): `.alea.yaml`, layer folders,
@@ -14,8 +14,17 @@
 //                        package (default: `../design_system/lib/`),
 //                        enabling a single design system across features.
 //
-// Both templates are embedded as Dart strings in this file. Substitution
-// uses the existing TemplateEngine (`{{var}}` placeholders).
+//   --template config    Generates ONLY `.alea.yaml` from an existing
+//                        Flutter/Dart project. Reads pubspec.yaml to
+//                        detect package name, state management, and
+//                        routing. Scans the filesystem for canonical
+//                        Clean Architecture layer folders. Writes
+//                        placeholders with editing instructions for
+//                        anything not auto-detected.
+//
+// `project` and `feature` use embedded string templates rendered via the
+// TemplateEngine (`{{var}}` placeholders). `config` uses the dedicated
+// pure generator in `lib/src/cli/init/config_generator.dart`.
 //
 // Idempotency: refuses to overwrite existing files unless --force is set.
 // --dry-run prints the plan without writing anything.
@@ -25,7 +34,14 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
 
+import '../../adapters/platform_commands/factory.dart';
 import '../../scaffolding/template_engine.dart';
+import '../init/config_generator.dart';
+import '../init/layer_scanner.dart';
+import '../init/pubspec_reader.dart';
+import '../install/installer.dart';
+import '../install/prompt_loader.dart';
+import 'commands_path_command.dart' show locateCommandsDir;
 
 class InitCommand extends Command<int> {
   InitCommand() {
@@ -33,9 +49,11 @@ class InitCommand extends Command<int> {
       ..addOption(
         'template',
         abbr: 't',
-        allowed: ['project', 'feature'],
+        allowed: ['project', 'feature', 'config'],
         defaultsTo: 'project',
-        help: 'Which skeleton to generate.',
+        help:
+            'Which skeleton to generate. `config` generates only '
+            '.alea.yaml from an existing project.',
       )
       ..addOption(
         'output',
@@ -70,6 +88,17 @@ class InitCommand extends Command<int> {
         'dry-run',
         negatable: false,
         help: 'Print the file plan without writing anything.',
+      )
+      ..addOption(
+        'platform',
+        help:
+            'Install aflow commands for these platforms after init '
+            '(claude,gemini,codex,cursor or "all").',
+      )
+      ..addFlag(
+        'no-install-commands',
+        negatable: false,
+        help: 'Skip command installation during init.',
       );
   }
 
@@ -81,12 +110,30 @@ class InitCommand extends Command<int> {
       'Bootstrap an ALEA-ready skeleton (project or feature package).';
 
   @override
-  String get invocation => 'alea init [<package_name>]';
+  String get invocation => 'aflow init [<package_name>]';
 
   @override
   Future<int> run() async {
     final res = argResults!;
     final outputDir = p.canonicalize(res['output'] as String);
+    final template = res['template'] as String;
+    final force = res['force'] as bool;
+    final dryRun = res['dry-run'] as bool;
+
+    if (template == 'config') {
+      if (res.rest.isNotEmpty) {
+        stderr.writeln(
+          'Note: positional package name is ignored with --template config; '
+          'the name is read from pubspec.yaml.',
+        );
+      }
+      return _runConfigTemplate(
+        outputDir: outputDir,
+        force: force,
+        dryRun: dryRun,
+      );
+    }
+
     final positional = res.rest;
     final packageName = positional.isNotEmpty
         ? positional.first
@@ -99,11 +146,8 @@ class InitCommand extends Command<int> {
       return 64;
     }
 
-    final template = res['template'] as String;
     final style = res['style'] as String;
     final designSystemPath = res['design-system-path'] as String;
-    final force = res['force'] as bool;
-    final dryRun = res['dry-run'] as bool;
 
     final vars = <String, Object?>{
       'package_name': packageName,
@@ -167,7 +211,7 @@ class InitCommand extends Command<int> {
         '  1. Review lib/src/theme/tokens.dart and edit '
         'brand colors / typography.',
       );
-      stdout.writeln('  2. Run: alea analyze --gate domain');
+      stdout.writeln('  2. Run: aflow analyze --gate domain');
     } else {
       stdout.writeln(
         '  1. Ensure $designSystemPath/lib/ exists and exposes '
@@ -177,13 +221,178 @@ class InitCommand extends Command<int> {
         '  2. Add this package to your workspace '
         '(melos.yaml or pubspec workspace).',
       );
-      stdout.writeln('  3. Run: alea analyze --project-root $outputDir');
+      stdout.writeln('  3. Run: aflow analyze --project-root $outputDir');
     }
+    await _maybeInstallCommands(outputDir);
     return 0;
+  }
+
+  /// Runs the optional post-init command installation when `--platform` is
+  /// provided and `--no-install-commands` is not set.
+  Future<void> _maybeInstallCommands(String projectRoot) async {
+    if (argResults!['no-install-commands'] as bool) return;
+    final platform = argResults!['platform'] as String?;
+    if (platform == null) return;
+
+    final dir = await locateCommandsDir();
+    if (dir == null) {
+      stderr.writeln(
+        'Warning: could not locate core/commands/ — skipping command installation.',
+      );
+      return;
+    }
+
+    try {
+      final prompts = await loadCommandPrompts(dir);
+      final sel = resolvePlatformSpec(platform);
+      if (sel.unknown.isNotEmpty) {
+        stderr.writeln(
+          'init: ignoring unknown platform(s): '
+          '${sel.unknown.join(', ')}',
+        );
+      }
+      if (sel.adapters.isEmpty) return;
+      await installCommands(
+        prompts: prompts,
+        adapters: sel.adapters,
+        projectRoot: projectRoot,
+      );
+    } on FormatException catch (e) {
+      stderr.writeln('init: skipped command install (${e.message})');
+    } on FileSystemException catch (e) {
+      stderr.writeln('init: skipped command install (${e.message})');
+    }
   }
 
   bool _isValidPackageName(String name) =>
       RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(name);
+
+  /// Runs the `--template config` flow: reads pubspec.yaml from
+  /// [outputDir], detects what it can, and writes `.alea.yaml`.
+  ///
+  /// Exit codes:
+  ///   0   success (file written, or --dry-run completed).
+  ///   1   pubspec.yaml missing, unreadable, or malformed.
+  ///   2   .alea.yaml already exists and --force was not passed.
+  ///   64  invalid package name in pubspec.yaml (matches the same
+  ///       EX_USAGE convention as the template flows).
+  Future<int> _runConfigTemplate({
+    required String outputDir,
+    required bool force,
+    required bool dryRun,
+  }) async {
+    final pubspecPath = p.join(outputDir, 'pubspec.yaml');
+
+    final PubspecData pubspec;
+    try {
+      pubspec = const PubspecReader().read(pubspecPath);
+    } on PubspecReaderException catch (e) {
+      stderr.writeln(e.message);
+      return 1;
+    }
+
+    if (!_isValidPackageName(pubspec.packageName)) {
+      stderr.writeln(
+        'pubspec.yaml has an invalid `name:` value: "${pubspec.packageName}". '
+        'Must match [a-z][a-z0-9_]*',
+      );
+      return 64;
+    }
+
+    final layers = const LayerScanner().scan(outputDir);
+    final input = ConfigGenerationInput(
+      pubspec: pubspec,
+      layers: layers,
+      generatedAtUtc: DateTime.now().toUtc(),
+    );
+    final yaml = const ConfigGenerator().generate(input);
+
+    final outPath = p.join(outputDir, '.alea.yaml');
+    final outFile = File(outPath);
+    final exists = outFile.existsSync();
+
+    if (dryRun) {
+      stdout
+        ..writeln('Template:     config')
+        ..writeln('Package name: ${pubspec.packageName}')
+        ..writeln('Output:       $outPath')
+        ..writeln(
+          'Plan: ${exists ? "overwrite" : "create"} .alea.yaml '
+          '(${yaml.length} bytes)',
+        );
+      _printDetectionSummary(pubspec, layers);
+      return 0;
+    }
+
+    if (exists && !force) {
+      stderr.writeln(
+        '.alea.yaml already exists at $outPath. Pass --force to overwrite.',
+      );
+      return 2;
+    }
+
+    outFile.parent.createSync(recursive: true);
+    outFile.writeAsStringSync(yaml);
+
+    stdout
+      ..writeln('Template: config (${pubspec.packageName})')
+      ..writeln('Output:   $outPath')
+      ..writeln(
+        '${exists ? "Overwrote" : "Created"} .alea.yaml '
+        '(${yaml.length} bytes).',
+      );
+    _printDetectionSummary(pubspec, layers);
+    stdout
+      ..writeln('')
+      ..writeln('Next steps:')
+      ..writeln(
+        '  1. Open .alea.yaml and review the # PLACEHOLDER blocks '
+        '(if any).',
+      )
+      ..writeln(
+        '  2. Enable the pipeline commands in your AI agent: paste '
+        '`<aflow commands-path>/INSTALL.md` to your agent '
+        '(see docs/CONSUMER_INTEGRATION.md §1.6).',
+      )
+      ..writeln(
+        '  3. Run /aflow-complete-config to ground .alea.yaml against the code graph.',
+      );
+    await _maybeInstallCommands(outputDir);
+    return 0;
+  }
+
+  void _printDetectionSummary(PubspecData pubspec, LayerPaths layers) {
+    stdout
+      ..writeln('')
+      ..writeln('Detection summary:')
+      ..writeln(
+        '  Flutter project:     ${pubspec.isFlutterProject ? "yes" : "no"}',
+      )
+      ..writeln(
+        '  State management:    '
+        '${pubspec.stateManagementStyle ?? "not detected (placeholder)"}',
+      )
+      ..writeln(
+        '  Routing:             '
+        '${pubspec.routingPackage ?? "not detected (placeholder)"}',
+      )
+      ..writeln(
+        '  Domain layer:        '
+        '${layers.domainPath ?? "not detected (placeholder)"}',
+      )
+      ..writeln(
+        '  Infrastructure layer:'
+        ' ${layers.infrastructurePath ?? "not detected (placeholder)"}',
+      )
+      ..writeln(
+        '  Presentation layer:  '
+        '${layers.presentationPath ?? "not detected (placeholder)"}',
+      )
+      ..writeln(
+        '  Theme folder:        '
+        '${layers.themePath ?? "not detected (placeholder)"}',
+      );
+  }
 
   /// Files for `--template project`. Keys are relative paths (may contain
   /// `{{var}}` placeholders), values are the file contents (also rendered).
@@ -399,7 +608,7 @@ class _HomePlaceholder extends StatelessWidget {
 
 const _featurePubspec = '''
 name: {{package_name}}
-description: Feature package generated by `alea init --template feature`.
+description: Feature package generated by `aflow init --template feature`.
 version: 0.1.0
 publish_to: none
 

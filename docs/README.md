@@ -6,9 +6,9 @@ Long-form documentation for package authors and consumers.
 
 - [`PROJECT_WALKTHROUGH.md`](PROJECT_WALKTHROUGH.md) — **visual walkthrough** with mermaid diagrams (architecture, pipeline sequence, adapter selection, artifact flow, CLI map) + recommended reading order. **Start here if you're new.**
 - [`CONSUMER_INTEGRATION.md`](CONSUMER_INTEGRATION.md) — step-by-step guide for a Flutter project that wants to adopt alea_flow (full reference).
-- [`adr/`](adr/) — 11 Architectural Decision Records, one per design decision (0001 = invariants … 0011 = monorepo & bootstrap).
+- [`adr/`](adr/) — 18 Architectural Decision Records, one per design decision (0001 = invariants … 0018 = self-package resolution).
 
-## TBD
+## TBD (planned — not yet written)
 
 - `extending-the-pipeline.md` — adding a new adapter / analyzer / gate.
 - `contracts-versioning.md` — when to bump major vs minor; deprecation policy.

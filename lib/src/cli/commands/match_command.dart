@@ -1,4 +1,4 @@
-// ALEA — `alea match <family> <query>` subcommand.
+// ALEA — `aflow match <family> <query>` subcommand.
 //
 // Family is `color`, `typography`, or `spacing`. The command loads the
 // consumer's `.alea.yaml`, builds the DesignTokenCatalog declared by
@@ -56,7 +56,7 @@ class MatchCommand extends Command<int> {
       'Resolve a hex / size+weight / metric against the design-token catalog.';
 
   @override
-  String get invocation => 'alea match <color|typography|spacing> <query>';
+  String get invocation => 'aflow match <color|typography|spacing> <query>';
 
   @override
   Future<int> run() async {

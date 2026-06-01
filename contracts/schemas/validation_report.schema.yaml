@@ -1,0 +1,51 @@
+# Validation Report Schema — Output of `/validate-functional`.
+#
+# Produced by: `core/commands/validate-functional`.
+# Consumed by: `core/commands/pipeline`, `core/commands/qa-handoff`,
+#              `core/commands/merge`.
+#
+# Written to: `.pipeline/runs/<ticket_id>/validation_report.json`.
+
+contract_version: "1.0.0"
+contract_status: draft
+
+# ─── Top-level required fields ────────────────────────────────────────────────
+required:
+  - ticket_id
+  - overall_passed
+  - timestamp
+  - criteria
+
+# ─── Field-by-field schema ────────────────────────────────────────────────────
+
+ticket_id:
+  type: string
+  description: The ticket identifier this validation belongs to.
+
+overall_passed:
+  type: bool
+  description: True iff every criterion result is `passed` or `manual` and
+    tests_failing is empty.
+
+timestamp:
+  type: iso8601
+  description: When functional validation finished.
+
+criteria:
+  type: list<ValidationCriterion>
+  description: One entry per success criterion. Each has `text` (string),
+    `covered_by` (string, "test file:test name"), `result`
+    (passed|failed|manual), `evidence` (string).
+
+manual_steps:
+  type: list<ManualStep>
+  description: Steps a human tester must perform. Each has `criterion` (string)
+    and `steps` (list<string>).
+
+tests_added:
+  type: list
+  description: Paths of test files added during validation.
+
+tests_failing:
+  type: list
+  description: Identifiers of tests that are currently failing (empty when passed).

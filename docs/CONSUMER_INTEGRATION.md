@@ -46,7 +46,7 @@ section if you already have a hand-rolled `.alea.yaml`.
 ```bash
 flutter create my_app
 cd my_app
-alea init my_app --template project
+aflow init my_app --template project
 ```
 
 Writes:
@@ -66,7 +66,7 @@ Add `go_router` to your `pubspec.yaml` (ALEA does not touch it), then run
 
 ```bash
 cd packages/
-alea init feature_wallet --template feature
+aflow init feature_wallet --template feature
 ```
 
 Writes a Dart-only package (no Flutter platform code) whose `.alea.yaml`
@@ -79,13 +79,68 @@ tokens.
 Override the design system path when needed:
 
 ```bash
-alea init feature_wallet --template feature \
+aflow init feature_wallet --template feature \
   --design-system-path ../../shared/design_system
 ```
 
 Other useful flags: `--style bloc` (or `provider`, `getx`), `--dry-run`
 (prints the plan, writes nothing), `--force` (overwrites pre-existing
 files).
+
+---
+
+## 1.6 — Enable the pipeline commands in your AI agent
+
+The pipeline (`/aflow-analyze-ticket`, `/aflow-complete-config`, `/aflow-pipeline`, …) is driven by
+**platform-agnostic prompt files** that ship with the package under
+`core/commands/`. They are NOT a single platform's slash-commands — your AI agent
+installs them into whatever mechanism it uses (Claude Code, Gemini CLI, Cursor,
+Codex, Windsurf, …).
+
+**Deterministic (recommended):** use `aflow install-commands` to install
+directly — no agent session needed:
+
+```bash
+# Interactive multi-select menu (TTY)
+aflow install-commands
+
+# Or specify platforms explicitly
+aflow install-commands --platform claude
+aflow install-commands --platform claude,gemini,codex,cursor
+aflow install-commands --platform all --dry-run   # preview only
+```
+
+Supported platforms in v1: Claude Code, Gemini CLI, Codex, and Cursor.
+`aflow init --platform <id>` runs the same install automatically at the end
+of onboarding. See [ADR-0021](adr/0021-deterministic-command-install.md) for
+per-platform locations and format details.
+
+> **Codex note.** The Codex adapter installs to `~/.codex/prompts/`
+> (or `$CODEX_HOME/prompts/`) — a **global** directory shared by all projects.
+> Codex custom prompts are deprecated upstream in favour of skills; the adapter
+> targets the still-functional `prompts/` mechanism.
+
+**Agent-driven fallback (other platforms):** open your AI agent and paste the
+contents of the bundled `INSTALL.md`:
+
+```bash
+aflow commands-path        # prints the dir holding the command prompts + INSTALL.md
+# → e.g. ~/.pub-cache/hosted/pub.dev/alea_flow-x.y.z/core/commands
+```
+
+Then tell your agent: *"follow the steps in `<that path>/INSTALL.md`"*. The agent
+runs `aflow commands-path`, reads the prompts, and installs them where your
+platform discovers commands.
+
+**Manual (Claude Code):** copy `*.md` (except `INSTALL.md` and `references/`) from
+`aflow commands-path` into your project's `.claude/commands/`.
+
+> **Compatibility:** the pipeline requires running `aflow …` in a shell and reading
+> its **exit code**. A platform that cannot execute shell commands and read exit
+> codes cannot run the pipeline (see `references/README.md`).
+
+After enabling, the first command to run is **`/aflow-complete-config`** (it grounds your
+`.alea.yaml` against the code graph).
 
 ---
 
@@ -148,7 +203,7 @@ gates:
 Validate it loads:
 
 ```bash
-alea analyze --project-root . --gate domain
+aflow analyze --project-root . --gate domain
 ```
 
 If the config is malformed, the CLI exits with code 2 and a message
@@ -336,13 +391,13 @@ theme:
 Once configured, `aflow match` resolves arbitrary inputs:
 
 ```bash
-alea match color "#0066CC"
+aflow match color "#0066CC"
 # → recommended: StyleColors.brand60 (ΔE = 0.00, match)
 
-alea match typography "16/semibold"
+aflow match typography "16/semibold"
 # → recommended: StyleFonts.body2
 
-alea match spacing 16 --unit px
+aflow match spacing 16 --unit px
 # → recommended: spacing.md
 ```
 
@@ -447,7 +502,7 @@ mr:
     - flutter test
 ```
 
-The `pre_push` list is run by `alea create-mr` (or the equivalent skill)
+The `pre_push` list is run by `aflow create-mr` (or the equivalent skill)
 before pushing. Any failing step blocks the push.
 
 ---
@@ -534,8 +589,8 @@ alea_gates:
   script:
     - cd alea && dart pub get && dart compile exe bin/aflow.dart -o /usr/local/bin/aflow
     - cd $CI_PROJECT_DIR
-    - alea analyze --project-root . --gate domain --format json --output-file gate_domain.json
-    - alea analyze --project-root . --gate presentation --format json --output-file gate_presentation.json
+    - aflow analyze --project-root . --gate domain --format json --output-file gate_domain.json
+    - aflow analyze --project-root . --gate presentation --format json --output-file gate_presentation.json
   artifacts:
     paths:
       - gate_*.json

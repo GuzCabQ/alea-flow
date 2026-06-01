@@ -1,0 +1,58 @@
+# Final Report Schema — Output of `/review-feature`.
+#
+# Produced by: `core/commands/review-feature`.
+# Consumed by: `core/commands/create-mr`, `core/commands/qa-handoff`,
+#              `core/commands/merge`, `core/commands/pipeline-feedback`.
+#
+# Written to: `.pipeline/runs/<ticket_id>/final_report.json`.
+
+contract_version: "1.0.0"
+contract_status: draft
+
+# ─── Top-level required fields ────────────────────────────────────────────────
+required:
+  - ticket_id
+  - passed
+  - timestamp
+  - summary
+
+# ─── Field-by-field schema ────────────────────────────────────────────────────
+
+ticket_id:
+  type: string
+  description: The ticket identifier this report belongs to.
+
+passed:
+  type: bool
+  description: True iff unmet_criteria, spec_drift, coverage_violations are all
+    empty AND cross_layer.passed is true.
+
+timestamp:
+  type: iso8601
+  description: When the review finished.
+
+mr_url:
+  type: string
+  description: The merge/pull-request URL, populated by /create-mr after the MR
+    is opened. Null until then.
+
+summary:
+  type: object
+  description: Roll-up counts (success_criteria_total, success_criteria_met,
+    files_total, spec_drift_count, unmet_criteria_count, coverage_violations).
+
+unmet_criteria:
+  type: list
+  description: Success criteria the implementation did not satisfy.
+
+spec_drift:
+  type: list
+  description: Items the spec promised that the implementation did not deliver.
+
+coverage_violations:
+  type: list
+  description: Layers/files below their configured coverage threshold.
+
+cross_layer:
+  type: object
+  description: The full GateReport object from the cross-layer `aflow analyze --gate full` run.

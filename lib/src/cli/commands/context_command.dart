@@ -1,4 +1,4 @@
-// ALEA — `alea context` subcommand.
+// ALEA — `aflow context` subcommand.
 //
 // Builds (or reuses) the context-packet.md for a given run directory.
 // Optimised for being called by skills before they hit the LLM —

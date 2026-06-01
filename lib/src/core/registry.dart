@@ -9,6 +9,7 @@ import '../analyzers/design_principles/analyzer.dart';
 import '../analyzers/dry_detection/analyzer.dart';
 import '../analyzers/flutter_antipatterns/analyzer.dart';
 import '../analyzers/layer_integrity/analyzer.dart';
+import '../analyzers/meaningful_test/analyzer.dart';
 import '../analyzers/package_boundary/analyzer.dart';
 import '../analyzers/performance/analyzer.dart';
 import '../analyzers/project_conventions/analyzer.dart';
@@ -32,6 +33,7 @@ List<Analyzer> registeredAnalyzers() => [
   DryDetectionAnalyzer(),
   FlutterAntipatternsAnalyzer(),
   LayerIntegrityAnalyzer(),
+  MeaningfulTestAnalyzer(),
   PackageBoundaryAnalyzer(),
   PerformanceAnalyzer(),
   ProjectConventionsAnalyzer(),

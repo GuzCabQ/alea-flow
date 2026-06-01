@@ -106,5 +106,24 @@ void main() {
       ]);
       expect(code, 64);
     });
+
+    // Task 4: When --schema resolves to a file that doesn't exist under
+    // --schemas-dir, the command must exit 2 with the resolved path in the
+    // error message (not an opaque crash or a different code).
+    test(
+      'missing schema resolved via --schema+--schemas-dir exits 2 with path',
+      () async {
+        final code = await AleaCliRunner().run([
+          'validate-artifact',
+          '--schema',
+          'does_not_exist',
+          '--schemas-dir',
+          tmp.path,
+          '--artifact',
+          writeArtifact(validBugfix()),
+        ]);
+        expect(code, 2);
+      },
+    );
   });
 }

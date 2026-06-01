@@ -1,4 +1,4 @@
-// ALEA — `alea inventory` subcommand.
+// ALEA — `aflow inventory` subcommand.
 //
 // Scans the consumer project for widget-like classes and writes the
 // JSON inventory to disk. Paths come from `analyzers.options.widget_inventory.scan_paths`

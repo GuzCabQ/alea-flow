@@ -162,6 +162,13 @@ testing:
       default: "Fake{Name}Repository"
       description: Pattern for naming fake classes; `{Name}` is substituted with
         the entity name.
+    missing_test_severity:
+      type: string
+      enum: [minor, major, critical, blocker]
+      default: major
+      description: Severity for the "no test file found" finding. Default `major`
+        is advisory (non-blocking); raise to `critical`/`blocker` to make a
+        missing test fail the gate.
 
 coverage:
   type: object
@@ -280,6 +287,30 @@ analyzers:
       description: Map of analyzer name → severity to coerce every issue to.
         Used to demote `dry_detection` to `minor` for projects that tolerate
         more duplication, for example.
+
+graph:
+  type: object
+  default: {}
+  description: Optional configuration for the code-knowledge-graph
+    (`aflow graph`). The graph uses an opt-out coverage model — it collects
+    every `.dart` under `lib/`; only `exclude` globs create a blind spot.
+    Layer paths classify the collected set; files outside every layer are
+    reported by `aflow graph-query unlayered`.
+  fields:
+    exclude:
+      type: list<glob>
+      default: ["**/*.g.dart", "**/*.freezed.dart"]
+      description: Globs for `.dart` files the graph must NOT collect. User
+        entries are MERGED onto the defaults (deduped) so generated code never
+        becomes visible by accident. Glob syntax — `*` (one segment), `**`
+        (any depth), trailing `/` (prefix dir).
+    roles:
+      type: map<string, string>
+      default: {}
+      description: Supertype label → role tag, extending/overriding the
+        built-in framework map (e.g. `Notifier → riverpod.notifier`,
+        `GetxController → getx.controller`). Used to tag declaration nodes
+        with a semantic state-mgmt role.
 
 docs:
   type: map<string, relative_path>

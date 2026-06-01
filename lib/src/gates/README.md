@@ -23,7 +23,7 @@ Each gate folder contains:
 
 ```
 <name>/
-├── gate.dart            ← implements Gate
+├── gate.dart            ← gate logic (composes analyzers)
 ├── gate_test.dart       ← integration tests
 └── README.md            ← what analyzers it runs, what thresholds it applies
 ```

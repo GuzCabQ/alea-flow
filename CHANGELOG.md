@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-05-29
+
+### Added
+
+- `aflow init --template config` — generate a starter `.alea.yaml` for an
+  **existing** Flutter project by reading `pubspec.yaml` and a shallow layer
+  scan. Every field carries a traceable comment (`# inferred from …`,
+  `# detected at …`, `# default`, `# PLACEHOLDER`); anything not auto-detected
+  is emitted as an explicit `PLACEHOLDER` block instead of being guessed
+  (ADR-0012).
+- `aflow analyze --format html` — a self-contained, browsable gate report written to
+  `alea-reports/` (`index.html` + `styles.css` + `app.js` + `report.json`). Triage-first:
+  the few **blocking** findings (blocker/critical) are surfaced above the many
+  **advisory** ones (major/minor), with grouping by severity / file / analyzer, live
+  filters, search, copy-path, light/dark, and a keyboard-accessible file tree. With
+  `--format html`, `-o` is the output **directory** (default `alea-reports/`). See
+  [ADR-0013](docs/adr/0013-html-gate-report.md).
+- The human gate report now ends with a tip pointing to `--format html`, so the report
+  is discoverable from the terminal output.
+
+### Changed
+
+- Refreshed `README.md`, `core/` command docs (`analyze-ticket`, `create-mr`,
+  `pipeline`, `pipeline-feedback`) and the `analysis` / `spec` contract schemas.
+- Ignore local-only working docs (`docs/analysis/`, `docs/superpowers/`,
+  `docs/proposals/`) so they stay out of the published history.
+
+### Fixed (parity-driven analyzer remediation)
+
+Validated against a real consumer Flutter project; each fix removed false
+positives without losing genuine signal.
+
+- **`testing`** — recognise the standard `lib/` → `test/` mirror layout (it
+  previously demanded `test/<rel-to-layer>/…`, missing almost every real test);
+  `missing_test` severity is now configurable via
+  `testing.missing_test_severity` and defaults to `major` (advisory); exempt
+  files with no testable surface (generated `*.g.dart`/`*.freezed.dart`, plain
+  enums, constants, pure data classes, barrels).
+- **`visual_fidelity`** — `button_without_content` no longer treats
+  `ElevatedButton.styleFrom(...)` (a `ButtonStyle` factory) as a content-less
+  button; `missing_image_fit` demoted from `critical` to `major` (advisory).
+- **`flutter_antipatterns`** — `context_after_async` no longer flags `context`
+  passed as an argument to the awaited call itself (read before the gap); it
+  compares against the end of the await expression.
+- **`code_complexity`** — `operator ==` / `hashCode` are exempt from the
+  cyclomatic check (their McCabe count is a flat field-comparison artifact, not
+  branching logic); length checks still apply.
+- Added regression test coverage for the `testing`, `flutter_antipatterns` and
+  `code_complexity` analyzers (previously untested).
+
 ## [0.1.0] — 2026-05-24
 
 Initial release of `alea_flow` — the Flutter pipeline tool from

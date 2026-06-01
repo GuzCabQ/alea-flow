@@ -1,4 +1,4 @@
-// ALEA — pubspec.yaml reader for `alea init --template config`.
+// ALEA — pubspec.yaml reader for `aflow init --template config`.
 //
 // Pure function: given a path to a pubspec.yaml, returns a [PubspecData]
 // with the fields needed to seed a `.alea.yaml`. Detection of state
@@ -73,7 +73,7 @@ class PubspecReader {
     if (!file.existsSync()) {
       throw PubspecReaderException(
         'pubspec.yaml not found at "$pubspecPath". '
-        '`alea init --template config` must be run inside a Flutter or Dart '
+        '`aflow init --template config` must be run inside a Flutter or Dart '
         'project (a directory containing pubspec.yaml).',
       );
     }

@@ -1,0 +1,41 @@
+# Code Review Schema — Output of `/code-review`.
+#
+# Produced by: `core/commands/code-review`.
+# Consumed by: `core/commands/pipeline` (gate handling), `core/commands/pipeline-feedback`.
+#
+# Written to: `.pipeline/runs/<ticket_id>/code_review.json`.
+
+contract_version: "1.0.0"
+contract_status: draft
+
+# ─── Top-level required fields ────────────────────────────────────────────────
+required:
+  - ticket_id
+  - timestamp
+  - approved
+  - issues
+
+# ─── Field-by-field schema ────────────────────────────────────────────────────
+
+ticket_id:
+  type: string
+  description: The ticket identifier this review belongs to.
+
+timestamp:
+  type: iso8601
+  description: When the review finished.
+
+files_reviewed:
+  type: int
+  description: Number of files inspected.
+
+approved:
+  type: bool
+  description: True iff there are no `blocker` or `critical` issues.
+
+issues:
+  type: list<CodeReviewIssue>
+  description: One entry per finding. Each CodeReviewIssue has `file` (string),
+    `line` (int), `severity` (blocker|critical|major|minor), `category`
+    (domain|infrastructure|presentation|bugfix|smell), `message` (string),
+    `suggested_fix` (string).

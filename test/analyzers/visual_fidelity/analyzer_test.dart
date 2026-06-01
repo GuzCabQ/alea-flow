@@ -38,7 +38,9 @@ void main() {
       final fit = _byRule(result, 'visual_fidelity/missing_image_fit');
       expect(fit, hasLength(3));
       for (final issue in fit) {
-        expect(issue.severity, Severity.critical);
+        // Advisory (non-blocking): a missing `fit:` is a layout/fidelity
+        // concern, not broken UX or a runtime crash. See VF-3 calibration.
+        expect(issue.severity, Severity.major);
       }
       expect(fit.map((i) => i.line).toSet(), {15, 16, 17});
     });

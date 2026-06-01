@@ -6,6 +6,15 @@
 // Domain-layer check is now config-aware: walks `config.architecture.layers`
 // to find the layer whose name is `domain` (if present). Falls back to the
 // path-segment heuristic when no `domain` layer exists.
+//
+// Secret detection scope: the analyzer matches variable/field names against a
+// keyword pattern and requires the initializer to be a string literal whose
+// length is ≥ `min_secret_value_length` (default 12, tunable via
+// `.alea.yaml`). It does NOT catch dynamically-built secrets or non-string
+// values. A name-keyword substring match may rarely over-match (e.g. a field
+// named `passwordLength` paired with a long string literal) — this is a known
+// limitation documented here rather than mitigated with lookahead, which would
+// risk introducing false negatives.
 
 import 'dart:io';
 
@@ -22,11 +31,10 @@ import '../../contracts/project_config.dart';
 // Variable/field name patterns that suggest the value is a secret.
 final _secretNamePattern = RegExp(
   r'(api[_-]?key|secret|password|passwd|auth[_-]?token|'
-  r'private[_-]?key|bearer[_-]?token|access[_-]?token|client[_-]?secret)',
+  r'private[_-]?key|bearer[_-]?token|access[_-]?token|refresh[_-]?token|'
+  r'client[_-]?secret|encryption[_-]?key|signing[_-]?key|jwt)',
   caseSensitive: false,
 );
-// Minimum string length to consider a value a potential secret.
-const _minSecretValueLength = 12;
 
 class SecurityAnalyzer extends Analyzer {
   @override
@@ -34,6 +42,10 @@ class SecurityAnalyzer extends Analyzer {
 
   @override
   Future<List<AnalysisIssue>> doAnalyze(AnalyzerContext ctx) async {
+    final opts = ctx.config.analyzers.optionsFor(name);
+    final minSecretValueLength =
+        (opts['min_secret_value_length'] as num?)?.toInt() ?? 12;
+
     final issues = <AnalysisIssue>[];
     final domainPaths = _resolveDomainPaths(ctx.config);
 
@@ -56,7 +68,11 @@ class SecurityAnalyzer extends Analyzer {
         issues,
       );
 
-      final visitor = _SecurityVisitor(filePath, parsed.lineInfo);
+      final visitor = _SecurityVisitor(
+        filePath,
+        parsed.lineInfo,
+        minSecretValueLength: minSecretValueLength,
+      );
       parsed.unit.accept(visitor);
       issues.addAll(visitor.issues);
     }
@@ -107,9 +123,15 @@ class SecurityAnalyzer extends Analyzer {
 }
 
 class _SecurityVisitor extends RecursiveAstVisitor<void> {
-  _SecurityVisitor(this.filePath, this.lineInfo);
+  _SecurityVisitor(
+    this.filePath,
+    this.lineInfo, {
+    required this.minSecretValueLength,
+  });
+
   final String filePath;
   final LineInfo lineInfo;
+  final int minSecretValueLength;
   final List<AnalysisIssue> issues = [];
 
   @override
@@ -157,7 +179,7 @@ class _SecurityVisitor extends RecursiveAstVisitor<void> {
       if (!_secretNamePattern.hasMatch(name)) continue;
       final initializer = variable.initializer;
       if (initializer is! SimpleStringLiteral) continue;
-      if (initializer.value.length < _minSecretValueLength) continue;
+      if (initializer.value.length < minSecretValueLength) continue;
 
       final line = lineInfo.getLocation(variable.offset).lineNumber;
       issues.add(

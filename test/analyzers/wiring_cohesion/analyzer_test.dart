@@ -130,6 +130,56 @@ void main() {
     });
   });
 
+  group('WiringCohesionAnalyzer — resilience', () {
+    test('does not crash when a scanned .dart file is unreadable', () async {
+      final root = Directory.systemTemp.createTempSync('wiring_unreadable_');
+      addTearDown(() {
+        // Restore permissions before deleting so tearDown works on all platforms.
+        final bad = File(p.join(root.path, 'lib', 'bad_service.dart'));
+        if (bad.existsSync()) {
+          Process.runSync('chmod', ['644', bad.path]);
+        }
+        root.deleteSync(recursive: true);
+      });
+      final libDir = Directory(p.join(root.path, 'lib'))
+        ..createSync(recursive: true);
+      // A valid readable candidate.
+      File(
+        p.join(libDir.path, 'foo_service.dart'),
+      ).writeAsStringSync('class FooService {}\n');
+      // A file that exists in the listing but cannot be read (chmod 000).
+      final bad = File(p.join(libDir.path, 'bad_service.dart'))
+        ..writeAsStringSync('class BadService {}\n');
+      Process.runSync('chmod', ['000', bad.path]);
+
+      // A manifest file so the rule doesn't short-circuit on manifest_missing.
+      final srcDir = Directory(p.join(root.path, 'lib', 'src'))
+        ..createSync(recursive: true);
+      File(
+        p.join(srcDir.path, 'injector.dart'),
+      ).writeAsStringSync('void setup() {}\n');
+
+      final config = _configWith(
+        wiring: const WiringConfig(
+          rules: [
+            WiringRule(
+              name: 'service_registration',
+              classPattern: '*Service',
+              manifestFile: 'lib/src/injector.dart',
+              registrationCall: 'registerSingleton',
+            ),
+          ],
+        ),
+      );
+
+      // The key assertion: no exception is thrown.
+      final result = await WiringCohesionAnalyzer().analyze(
+        _ctx(root.path, config),
+      );
+      expect(result.issues, isA<List<AnalysisIssue>>());
+    });
+  });
+
   group('WiringCohesionAnalyzer — config-driven behavior', () {
     test('null wiring config → analyzer is a no-op', () async {
       final root = _fixture('riverpod_gorouter');

@@ -72,3 +72,31 @@ because skills invoke the CLI many times per run.
 - `lib/src/cli/commands/{analyze,match,scaffold,inventory,journal,context}_command.dart`.
 - `tool/compile.sh`.
 - `test/cli/cli_runner_test.dart` — 11 smoke tests.
+
+---
+
+## Amendment — 2026-05-31 (post-ADR growth)
+
+The command set has grown beyond the original six. As of v0.1.1,
+`AleaCliRunner._wire()` registers **14 subcommands**:
+
+| Subcommand | Added after ADR-0010 |
+|---|---|
+| `init` | ADR-0011 (monorepo & bootstrap) |
+| `analyze` | original |
+| `match` | original |
+| `scaffold` | original |
+| `inventory` | original |
+| `journal` | original |
+| `context` | original |
+| `redact` | post-0010 (PII redaction gate) |
+| `check-files-changed` | post-0010 (CI diff gate) |
+| `validate-artifact` | post-0010 (artifact schema validation) |
+| `metrics` | post-0010 (cost/token metrics) |
+| `run` | post-0010 (pipeline orchestration) |
+| `graph` | post-0010 (code-knowledge-graph build) |
+| `graph-query` | post-0010 (code-knowledge-graph query) |
+
+The architectural decisions in this ADR (one binary, `Future<int>` return,
+AOT compile) remain valid and unchanged. The extension mechanism described
+("one new file + one line in `_wire()`") worked exactly as designed.

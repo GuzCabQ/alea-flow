@@ -50,6 +50,11 @@ class GateReporter {
       '${summary['majors']} majors, '
       '${summary['minors']} minors)',
     );
+    buffer.writeln('───────────────────────────────────────');
+    buffer.writeln(
+      'Tip: re-run with `--format html` for a browsable report '
+      '(written to alea-reports/index.html).',
+    );
 
     return buffer.toString();
   }

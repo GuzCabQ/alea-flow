@@ -95,9 +95,7 @@ class _PurityVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
-    if (_directlyInBuild &&
-        (node.target != null || node.isCascaded) &&
-        node.methodName.name == 'sort') {
+    if (_directlyInBuild && node.methodName.name == 'sort') {
       final line = lineInfo.getLocation(node.offset).lineNumber;
       issues.add(
         AnalysisIssue(
